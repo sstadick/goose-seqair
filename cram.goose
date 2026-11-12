@@ -494,7 +494,7 @@ fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: 
         last_tid = f.tid; last_pos = f.pos;
         if f.tid > tid || (f.tid == tid && f.pos >= end) { break; }
         if f.tid != tid || f.end <= begin || f.flags & filter.exclude_flags != 0 ||
-           f.mapq < filter.min_mapq || f.reference_len == 0 { continue; }
+           f.mapq < filter.min_mapq || (f.reference_len == 0 && !filter.retain_zero_span) { continue; }
         status = pileup::retain(store, record);
         if status != bam::Status.Record { break; }
     }

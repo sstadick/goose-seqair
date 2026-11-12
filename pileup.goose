@@ -9,13 +9,15 @@ import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 // Read-level filters. Defaults exclude unmapped, secondary, QC-failed and
 // duplicate reads (0x704), but keep supplementary alignments. No base-quality
 // filtering or mate-overlap adjustment is applied to raw columns.
-// Unmapped and zero-reference-span records never contribute, for any mask.
+// Unmapped and zero-reference-span records never produce columns, for any mask.
+// retain_zero_span keeps mapped zero-span records in input order in the store
+// for callers implementing read-admission policies; it defaults to false.
 //
 // ```goose
 // let filter = pileup::Filter { min_mapq: 20, .. };
 // assert(filter.exclude_flags == 0x704 && filter.min_mapq == 20);
 // ```
-struct Filter { exclude_flags: u16 = 0x704, min_mapq: u8 = 0 }
+struct Filter { exclude_flags: u16 = 0x704, min_mapq: u8 = 0, retain_zero_span: bool = false }
 
 // Fixed-size metadata with offsets into Store's separate slabs. Coordinates
 // remain zero-based and half-open; slab offsets and lengths are element counts
@@ -309,8 +311,18 @@ fn load<R>(store: Store&, reader: R&, tid: i32, begin: i64, end: i64,
 // let store = pileup::Store { .. };
 // assert(store.load_indexed(reader, index, 0, 95, 100) == bam::Status.Record);
 // assert(store.load_indexed(reader, index, 0, 5, 7) == bam::Status.Record);
-// let record = store.record(0);
-// assert(store.records.len == 1 && record.name() == "match");
+// {
+//     let record = store.record(0);
+//     assert(store.records.len == 1 && record.name() == "match");
+// }
+// assert(store.load_indexed(reader, index, 0, 0, 30,
+//     pileup::Filter { retain_zero_span: true, .. }) == bam::Status.Record);
+// var empty = 0;
+// for record in store.records { if record.reference_len == 0 { empty += 1; } }
+// assert(empty == 3); // Empty CIGAR, insertion-only, soft-clip-only.
+// store.columns() { pos, entries =>
+//     for entry in entries { assert(store.records[entry.record_index].reference_len > 0); }
+// };
 // ```
 fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Index&,
                 tid: i32, begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status {
@@ -342,7 +354,7 @@ fn scan_stream<R>(store: Store&, reader: R&, filter: Filter) -> bam::Status {
         last_tid = f.tid; last_pos = f.pos;
         if f.tid > store.tid || (f.tid == store.tid && f.pos >= store.end) { return bam::Status.Record; }
         if f.tid != store.tid || f.end <= store.begin || f.flags & filter.exclude_flags != 0 ||
-           f.mapq < filter.min_mapq || f.reference_len == 0 { continue; }
+           f.mapq < filter.min_mapq || (f.reference_len == 0 && !filter.retain_zero_span) { continue; }
         let kept = retain(store, record);
         if kept != bam::Status.Record { return kept; }
     }
@@ -394,7 +406,7 @@ fn scan(store: Store&, reader: bam::Reader&, filter: Filter,
         last_pos = f.pos;
         if f.tid > store.tid || (f.tid == store.tid && f.pos >= store.end) { break; }
         if f.tid != store.tid || f.end <= store.begin || f.flags & filter.exclude_flags != 0 ||
-           f.mapq < filter.min_mapq || f.reference_len == 0 { continue; }
+           f.mapq < filter.min_mapq || (f.reference_len == 0 && !filter.retain_zero_span) { continue; }
         let kept = retain(store, record);
         if kept != bam::Status.Record { return kept; }
     }
@@ -578,7 +590,7 @@ fn columns<F: fn(i64, const Entry[:])>(store: const Store&) {
         if pos >= store.end { break; }
         while next < store.records.len && store.records[next].pos <= pos {
             let fields = store.records[next];
-            if fields.end > pos {
+            if fields.end > pos && fields.reference_len > 0 {
                 active.push(Cursor {
                     record_index:  next, index: fields.cigar, reference: fields.pos, query: 0,
                     reference_end: fields.pos, code: 0, end: fields.end,
