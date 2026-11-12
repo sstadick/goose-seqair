@@ -1,0 +1,39 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      CC: clang
+      CXX: clang++
+      GOOSE_CC: clang
+      GOOSE_DOC: .ci/goose-doc/main.goose
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: aardappel/goose
+          ref: 74c641c5ac6d762e57e3177678fe9dea414d042a
+          path: .ci/goose
+      - uses: actions/checkout@v4
+        with:
+          repository: sstadick/goose-doc
+          ref: bb399143866c0c42268f23c8dfda7a447173f93d
+          path: .ci/goose-doc
+      - run: |
+          cmake -S .ci/goose -B .ci/goose/build -DCMAKE_BUILD_TYPE=Debug -DGOOSE_BUILTIN_LIBS=
+          cmake --build .ci/goose/build --parallel 2
+          echo "$PWD/.ci/goose/build" >> "$GITHUB_PATH"
+          python3 -m venv .venv
+          .venv/bin/pip install -r tests/requirements.txt
+      - run: scripts/docs.sh --check
+      - run: scripts/doctest.sh
+      - run: .venv/bin/python tests/run.py --native-only --cc clang
+      - run: python3 tests/native_simd.py --sanitize

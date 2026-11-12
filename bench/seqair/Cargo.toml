@@ -1,0 +1,19 @@
+[package]
+name = "seqair-comparison"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+seqair = { git = "https://github.com/Softleif/seqair", rev = "8401961de45883d4772226d91da95c9965104d59" }
+
+[profile.release]
+opt-level = 3
+
+[[bin]]
+name = "seqair-comparison"
+path = "main.rs"
+
+[[bin]]
+name = "seqair-cram"
+path = "cram.rs"

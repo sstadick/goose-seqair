@@ -1,0 +1,5 @@
+/.ci/
+/.venv/
+/bench/seqair/target/
+/tests/data/
+__pycache__/
