@@ -3,7 +3,7 @@ namespace bam_writer;
 import std;
 import bam;
 import bam_encode;
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import pileup;
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 

@@ -4,7 +4,7 @@ import std;
 import bam;
 import cram;
 import pileup;
-import io from "github.com/sstadick/goose-io@v0.2.2";
+import io from "github.com/sstadick/goose-io@v0.3.0";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 import deflate from "github.com/sstadick/goose-deflate@v0.1.0";
 

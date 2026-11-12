@@ -3,11 +3,11 @@ namespace cram_writer;
 import std;
 import bam;
 import bam_encode;
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import sam;
 import sam_writer;
 import pileup;
-import io from "github.com/sstadick/goose-io@v0.2.2";
+import io from "github.com/sstadick/goose-io@v0.3.0";
 import deflate from "github.com/sstadick/goose-deflate@v0.1.0";
 
 enum Key { BF, CF, RI, RL, AP, RG, RN, MF, NS, NP, TS, TL, FN, FC, FP, DL, MQ, BA, QS, IN, SC, RS, PD, HC, BB, Tags }

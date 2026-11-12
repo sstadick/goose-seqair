@@ -56,7 +56,8 @@ Requires Goose, CMake 3.20+, and a native C compiler, including for `goose run`
 (libdeflate is compiled natively). Tested with Goose
 [`74c641c5`](https://github.com/aardappel/goose/commit/74c641c5ac6d762e57e3177678fe9dea414d042a).
 Runtime dependencies are pinned in the source and example imports.
-Root programs must also declare `import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";`.
+Root programs must also declare `import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";`
+and select goose-io v0.3.0 for descriptor-owned seeking.
 The former internal BGZF implementation is now that standalone package.
 
 CRAM imports goose-simd v0.3.0. Its two shared native-only headers are vendored
@@ -243,7 +244,7 @@ After opening the FASTA and creating `source`, stream with
 `store.columns()` and `store.record()` as for BAM. Region loading is sequential,
 requires coordinate-sorted input, and links retained mates. Reopen before an
 independent query. The [CRAM benchmark](bench/cram.goose) has complete imports
-and a working faidx adapter using goose-bio v0.4.0; no sibling Bio checkout is needed.
+and a working faidx adapter using goose-bio v0.4.1; no sibling Bio checkout is needed.
 
 For indexed access, open a matching plain or gzip/BGZF CRAI with
 `cram_index::Index.open`, select a region with

@@ -4,9 +4,9 @@ import std;
 import binary;
 import bam;
 import bam_encode;
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import pileup;
-import io from "github.com/sstadick/goose-io@v0.2.2";
+import io from "github.com/sstadick/goose-io@v0.3.0";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
 extern fn float_text(value: f64, array: bool, output: u8[:]) -> i64 = "goose_seqair_sam_float";

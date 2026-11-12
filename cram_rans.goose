@@ -2,7 +2,7 @@
 namespace cram_rans;
 import std;
 import cram_encoding;
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 
 inline fn word(c: cram_encoding::Cursor&) -> u32 {
     let data = c.take(4); if !c.ok { return 0; } bgzf::le32(data, 0)

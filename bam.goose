@@ -1,7 +1,7 @@
 // Sequential BAM reader. Coordinates are zero-based, with exclusive ends.
 namespace bam;
 import std;
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
 // Record means a complete validated alignment; End is normal EOF. All other

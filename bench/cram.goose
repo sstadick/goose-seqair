@@ -3,14 +3,14 @@ import os;
 import seqair from "..";
 import seqair.cram;
 import seqair.bam;
-import bio from "github.com/sstadick/goose-bio@v0.4.0";
+import bio from "github.com/sstadick/goose-bio@v0.4.1";
 import bio.faidx;
 import io from "github.com/sstadick/goose-io@v0.3.0";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 import simd_bytes from "github.com/sstadick/goose-simd@v0.3.0";
 import simd_bytes.simd_int;
 import deflate from "github.com/sstadick/goose-deflate@v0.1.0";
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 
 struct Reference { reader: faidx::Reader& }
 fn fetch(source: Reference&, name: const u8[:], begin: i64, end: i64, output: u8[>..]&) -> bool {

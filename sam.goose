@@ -4,8 +4,8 @@ import std;
 import binary;
 import bam;
 import bam_encode;
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
-import io from "github.com/sstadick/goose-io@v0.2.2";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
+import io from "github.com/sstadick/goose-io@v0.3.0";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
 // Owns bounded line storage, the header dictionary and one reusable BAM

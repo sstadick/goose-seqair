@@ -2,7 +2,7 @@
 namespace cram;
 import std;
 import bam;
-import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import sam;
 import cram_encoding;
 import cram_rans;
