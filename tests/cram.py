@@ -1,5 +1,6 @@
 """CRAM public-reader/region tests against independently encoded htslib files."""
 from pathlib import Path
+import gzip
 import subprocess
 
 import pysam
@@ -21,7 +22,8 @@ def suite(command, directory):
     wrong = directory / "wrong.fa"; wrong.write_text(reference.read_text().replace("ACGTN", "TTTTT"))
     text = (f"@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chrA\tLN:{length}\n"
             f"@SQ\tSN:chrB\tLN:{length}\n@RG\tID:group\n").encode()
-    reads = [record("pair", 5, [("M", 13)], flags=65, mate_tid=0, mate_pos=14, template_len=22),
+    reads = [record("spanning", 1, [("M", 150)]),
+             record("pair", 5, [("M", 13)], flags=65, mate_tid=0, mate_pos=14, template_len=22),
              record("complex", 8, [("S", 2), ("M", 3), ("I", 2), ("M", 4), ("D", 3), ("M", 2), ("H", 1)]),
              record("splice", 9, [("M", 2), ("N", 7), ("M", 3)], aux=b"RGZgroup\0"),
              record("pair", 14, [("M", 13)], flags=129, mate_tid=0, mate_pos=5, template_len=-22),
@@ -54,6 +56,41 @@ def suite(command, directory):
         assert invoke("cram-write", path, ref, output) == ["S\tEnd"], name
         assert canonical(output, "rb") == canonical(path, "rc", reference), name
         pysam.index(str(output))
+        pysam.index(str(path))
+        crai = Path(str(path) + ".crai")
+        text_index = gzip.decompress(crai.read_bytes())
+        raw_index = directory / "raw.crai"; raw_index.write_bytes(text_index)
+        split_index = directory / "split.crai"
+        split_index.write_bytes(gzip.compress(text_index[:7]) + gzip.compress(text_index[7:]))
+        duplicate_index = directory / "duplicate.crai"
+        duplicate_index.write_bytes(text_index + text_index)
+        queries = [("chrB", 12, 18), ("chrA", 9, 30), ("chrA", 80, 90),
+                   ("chrA", 5, 6), ("chrA", 9, 30), ("chrA", 30, 30)]
+        records_text = invoke("cram", path, ref)[:-1]
+        expected_queries = []
+        for contig, begin, end in queries:
+            tid = 0 if contig == "chrA" else 1
+            selected = [r for r in records_text if int(r.split("\t")[2]) == tid and
+                        int(r.split("\t")[3]) < end and int(r.split("\t")[4]) > begin] if begin < end else []
+            with pysam.AlignmentFile(path, "rc", reference_filename=str(reference)) as indexed:
+                if begin < end:
+                    assert [r.split("\t")[1] for r in selected] == [r.query_name for r in indexed.fetch(contig, begin, end)], (name, contig, begin, end)
+            expected_queries += [f"Q\t{contig}\t{begin}\t{end}", *selected, "S\tEnd"]
+        for idx in (crai, raw_index, split_index, duplicate_index):
+            assert invoke("cram-indexed", path, ref, idx, *[v for q in queries for v in q]) == expected_queries, (name, idx)
+        bad_index = directory / "bad.crai"
+        bad_index.write_bytes(b"0\t1\t10\t26\t0\t1\n")
+        assert invoke("cram-indexed", path, ref, bad_index, "chrA", 0, 10)[-1] != "S\tEnd"
+        # Bounds, checksum, integer overflow, and expanded gzip index limits.
+        expanded = directory / "expanded.crai"
+        expanded.write_bytes(gzip.compress(text_index * 1000))
+        assert subprocess.check_output([*map(str, command), "cram-index", str(expanded),
+                                        str(len(expanded.read_bytes()) + 1)], text=True) == "S\tTooLarge\n"
+        for data in (b"0\t1\t2\t30\t4\n", b"0\t1\t2\t30\t4\t-1\n",
+                     b"0\t1\t2\t9223372036854775808\t4\t9\n", crai.read_bytes()[:-1]):
+            bad_index.write_bytes(data)
+            status = subprocess.check_output([*map(str, command), "cram-index", str(bad_index)], text=True)
+            assert status != "S\tRecord\n", (name, data)
         # Compare every per-read column entry, including deletion/refskip,
         # query offsets, bases and missing qualities, not merely depth.
         from run import oracle

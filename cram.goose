@@ -28,7 +28,7 @@ struct Window { begin: i64 = -1, end: i64 = 0, offset: i64 = 0 }
 // Owns the input, reusable codec scratch and decoded slice slabs. Header and
 // reference names live until open; records live until the next read/open/close.
 // Limits bound individual containers, decoded blocks/slabs and records, not
-// total process memory. End/errors are sticky until open. No CRAI seeking.
+// total process memory. End/errors are sticky until open or seek_slice.
 //
 // ```goose
 // let reader = cram::Reader { .. };
@@ -62,6 +62,7 @@ root struct Reader {
     reference_bases: u8[>..] = [], reference_tid: i32 = -1,
     windows: Window[>..] = [], window_bases: u8[>..] = [],
     next_slice: i64 = 0, next_record: i64 = 0,
+    container_offset: i64 = -1,
     bytes: u8[>..] = [], fields: bam::Fields,
 }
 
@@ -76,7 +77,7 @@ fn close(reader: Reader&) {
     reader.input.close(); reader.status = bam::Status.Closed;
     reader.container.clear(); reader.decoded.clear(); reader.blocks.clear();
     reader.landmarks.clear(); reader.clear_slice(); reader.bytes.clear();
-    reader.next_slice = 0; reader.next_record = 0;
+    reader.next_slice = 0; reader.next_record = 0; reader.container_offset = -1;
 }
 
 fn required(reader: Reader&, out: u8[:]) -> bool {
@@ -265,6 +266,7 @@ fn output(reader: Reader&) -> cram_slice::Output {
 }
 
 fn prepare_container(reader: Reader&) -> bam::Status {
+    reader.container_offset = -1;
     if reader.next_container() != bam::Status.Record { return reader.status; }
     reader.decoded.clear(); reader.blocks.clear(); reader.encodings.clear(); reader.symbols.clear();
     reader.tags.clear(); reader.tag_uses.clear(); reader.tag_lines.clear(); reader.next_slice = 0;
@@ -405,6 +407,42 @@ fn decode_slice<R>(reader: Reader&, source: R&) -> bam::Status {
     if !out.resolve(reader.prefix, slice.counter, !reader.compression.names) { return bam::Status.TooLarge; }
     reader.next_slice += 1;
     bam::Status.Record
+}
+
+// Seek to and decode one CRAI slice. container_offset is an absolute file byte
+// offset; slice_offset is relative to container data, not its header. size must
+// match the landmark span. Header/reference metadata survives; borrowed records
+// do not. Reuses the compressed container when adjacent queries share it.
+// source has the same contract as read. Use cram_index::Cursor for region reads.
+//
+// ```goose
+// let reader = cram::Reader { .. }; let source = ExampleReference { .. };
+// assert(reader.seek_slice(0, 0, 0, source) == bam::Status.Closed);
+// ```
+fn seek_slice<R>(reader: Reader&, container_offset: i64, slice_offset: i64, size: i64, source: R&) -> bam::Status {
+    reader.bytes.clear(); reader.clear_slice();
+    if reader.input.input.fd < 0 { return bam::Status.Closed; }
+    if container_offset < 26 || slice_offset < 0 || size <= 0 { reader.status = bam::Status.Invalid; return reader.status; }
+    if reader.container_offset != container_offset || reader.status != bam::Status.Record {
+        reader.container_offset = -1;
+        if bgzf::seek_raw(reader.input.input.fd, container_offset) != container_offset {
+            reader.status = bam::Status.IoError; return reader.status;
+        }
+        reader.input.input_begin = 0; reader.input.input_end = 0;
+        reader.input.status = bgzf::Status.Ready; reader.status = bam::Status.Record;
+        reader.status = reader.prepare_container();
+        if reader.status != bam::Status.Record { return reader.status; }
+        reader.container_offset = container_offset;
+    }
+    var slice: i64 = -1;
+    for offset, i in reader.landmarks { if offset == slice_offset { slice = i; break; } }
+    if slice < 0 { reader.status = bam::Status.Invalid; return reader.status; }
+    let end = if slice + 1 < reader.landmarks.len { reader.landmarks[slice + 1] } else { reader.container.len };
+    if size != end - slice_offset { reader.status = bam::Status.Invalid; return reader.status; }
+    reader.next_slice = slice;
+    reader.status = reader.decode_slice(source);
+    if reader.status != bam::Status.Record { reader.clear_slice(); }
+    reader.status
 }
 
 // Read one record, reconstructing its entire slice before resolving mates.

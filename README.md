@@ -243,7 +243,17 @@ After opening the FASTA and creating `source`, stream with
 `store.columns()` and `store.record()` as for BAM. Region loading is sequential,
 requires coordinate-sorted input, and links retained mates. Reopen before an
 independent query. The [CRAM benchmark](bench/cram.goose) has complete imports
-and a working faidx adapter; it currently uses the sibling `../goose-bio` checkout.
+and a working faidx adapter using goose-bio v0.4.0; no sibling Bio checkout is needed.
+
+For indexed access, open a matching plain or gzip/BGZF CRAI with
+`cram_index::Index.open`, select a region with
+`cursor.fetch(index, reader, tid, begin, end)`, then call
+`cursor.read(reader, source)` until `End`. Records use `reader.record()`.
+Each worker owns its reader and cursor; backward and repeated queries reuse
+container and codec buffers. Only selected slices are decoded. Nested spans
+are retained, duplicate slice addresses removed, and records stay in file order.
+CRAI has no identity checksum; skipped slices and stale indexes cannot be
+fully validated. Index creation is not included.
 
 Single-reference slices fetch their declared window. Multi-reference slices
 pre-scan data series and fetch one union window per contig rather than whole
@@ -258,7 +268,7 @@ these are standard codec libraries, not htslib. Missing backends return `Invalid
 direct bzip2/XZ blocks also set `unsupported_method`. Container and decoded-block CRCs are checked;
 like Seqair, EOF is recognized by its header without decoding its dummy blocks.
 
-This is an experimental streaming reader, **not CRAI-indexed access**.
+Streaming and CRAI-indexed access are experimental.
 CRAM 2.x and ordinary-gzip SAM remain unsupported.
 Limits bound individual containers, decoded buffers and records, not aggregate
 process memory. Linux x86-64 is tested; the optional native loader is POSIX-only.

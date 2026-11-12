@@ -56,6 +56,12 @@ cram::read
 cram::record
 cram::reference_id
 cram::load
+cram::seek_slice
+cram_index::Index
+cram_index::open
+cram_index::Cursor
+cram_index::fetch
+cram_index::read
 sam_writer::Writer
 sam_writer::open
 sam_writer::write

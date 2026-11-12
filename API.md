@@ -58,21 +58,27 @@
 - [`cram::Reader`](#api-54)
 - [`cram::close`](#api-55)
 - [`cram::open`](#api-56)
-- [`cram::read`](#api-57)
-- [`cram::record`](#api-58)
-- [`cram::reference_id`](#api-59)
-- [`cram::load`](#api-60)
-- [`sam_writer::Writer`](#api-61)
-- [`sam_writer::close`](#api-62)
-- [`sam_writer::open`](#api-63)
-- [`sam_writer::write`](#api-64)
-- [`sam_writer::write`](#api-65)
-- [`cram_writer::Writer`](#api-66)
-- [`cram_writer::flush`](#api-67)
-- [`cram_writer::close`](#api-68)
-- [`cram_writer::open`](#api-69)
-- [`cram_writer::write`](#api-70)
-- [`cram_writer::write`](#api-71)
+- [`cram::seek_slice`](#api-57)
+- [`cram::read`](#api-58)
+- [`cram::record`](#api-59)
+- [`cram::reference_id`](#api-60)
+- [`cram::load`](#api-61)
+- [`cram_index::Index`](#api-62)
+- [`cram_index::open`](#api-63)
+- [`cram_index::Cursor`](#api-64)
+- [`cram_index::fetch`](#api-65)
+- [`cram_index::read`](#api-66)
+- [`sam_writer::Writer`](#api-67)
+- [`sam_writer::close`](#api-68)
+- [`sam_writer::open`](#api-69)
+- [`sam_writer::write`](#api-70)
+- [`sam_writer::write`](#api-71)
+- [`cram_writer::Writer`](#api-72)
+- [`cram_writer::flush`](#api-73)
+- [`cram_writer::close`](#api-74)
+- [`cram_writer::open`](#api-75)
+- [`cram_writer::write`](#api-76)
+- [`cram_writer::write`](#api-77)
 
 <a id="api-1"></a>
 
@@ -1365,7 +1371,7 @@ assert(reader.status == bam::Status.Closed); // No record is available yet.
 
 ## `cram::Reader`
 
-[source](cram.goose#L38-L66)
+[source](cram.goose#L38-L67)
 
 ```goose
 root struct Reader {
@@ -1395,6 +1401,7 @@ root struct Reader {
     reference_bases: u8[>..] = [], reference_tid: i32 = -1,
     windows: Window[>..] = [], window_bases: u8[>..] = [],
     next_slice: i64 = 0, next_record: i64 = 0,
+    container_offset: i64 = -1,
     bytes: u8[>..] = [], fields: bam::Fields,
 }
 ```
@@ -1402,7 +1409,7 @@ root struct Reader {
 Owns the input, reusable codec scratch and decoded slice slabs. Header and
 reference names live until open; records live until the next read/open/close.
 Limits bound individual containers, decoded blocks/slabs and records, not
-total process memory. End/errors are sticky until open. No CRAI seeking.
+total process memory. End/errors are sticky until open or seek_slice.
 
 ```goose
 let reader = cram::Reader { .. };
@@ -1414,7 +1421,7 @@ assert(reader.max_container_bytes == 268435456);
 
 ## `cram::close`
 
-[source](cram.goose#L75-L80)
+[source](cram.goose#L76-L81)
 
 ```goose
 fn close(reader: Reader&)
@@ -1432,7 +1439,7 @@ assert(reader.status == bam::Status.Closed);
 
 ## `cram::open`
 
-[source](cram.goose#L201-L214)
+[source](cram.goose#L202-L215)
 
 ```goose
 fn open(reader: Reader&, path: const u8[:]) -> bam::Status
@@ -1451,9 +1458,30 @@ assert(reader.open("tests/data/example.bam") == bam::Status.Invalid);
 
 <a id="api-57"></a>
 
+## `cram::seek_slice`
+
+[source](cram.goose#L422-L446)
+
+```goose
+fn seek_slice<R>(reader: Reader&, container_offset: i64, slice_offset: i64, size: i64, source: R&) -> bam::Status
+```
+
+Seek to and decode one CRAI slice. container_offset is an absolute file byte
+offset; slice_offset is relative to container data, not its header. size must
+match the landmark span. Header/reference metadata survives; borrowed records
+do not. Reuses the compressed container when adjacent queries share it.
+source has the same contract as read. Use cram_index::Cursor for region reads.
+
+```goose
+let reader = cram::Reader { .. }; let source = ExampleReference { .. };
+assert(reader.seek_slice(0, 0, 0, source) == bam::Status.Closed);
+```
+
+<a id="api-58"></a>
+
 ## `cram::read`
 
-[source](cram.goose#L423-L450)
+[source](cram.goose#L461-L488)
 
 ```goose
 fn read<R>(reader: Reader&, source: R&) -> bam::Status
@@ -1473,11 +1501,11 @@ let source = ExampleReference { .. };
 assert(reader.read(source) == bam::Status.Closed);
 ```
 
-<a id="api-58"></a>
+<a id="api-59"></a>
 
 ## `cram::record`
 
-[source](cram.goose#L459-L459)
+[source](cram.goose#L497-L497)
 
 ```goose
 fn record(reader: const Reader&) -> bam::Record
@@ -1491,11 +1519,11 @@ let reader = cram::Reader { .. };
 assert(reader.status == bam::Status.Closed); // Read before calling record().
 ```
 
-<a id="api-59"></a>
+<a id="api-60"></a>
 
 ## `cram::reference_id`
 
-[source](cram.goose#L467-L467)
+[source](cram.goose#L505-L505)
 
 ```goose
 fn reference_id(reader: const Reader&, name: const u8[:]) -> i32
@@ -1508,11 +1536,11 @@ let reader = cram::Reader { .. };
 assert(reader.reference_id("missing") == -1);
 ```
 
-<a id="api-60"></a>
+<a id="api-61"></a>
 
 ## `cram::load`
 
-[source](cram.goose#L479-L503)
+[source](cram.goose#L517-L541)
 
 ```goose
 fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: i64, end: i64,
@@ -1530,7 +1558,108 @@ let store = pileup::Store { .. };
 assert(cram::load(store, reader, source, 0, 0, 10) == bam::Status.Invalid);
 ```
 
-<a id="api-61"></a>
+<a id="api-62"></a>
+
+## `cram_index::Index`
+
+[source](cram_index.goose#L22-L22)
+
+```goose
+root struct Index { entries: Entry[>..] = [], status: bam::Status = bam::Status.Closed, max_bytes: i64 = 268435456 }
+```
+
+Owned CRAI index. Plain text and concatenated gzip/BGZF members are accepted.
+max_bytes bounds compressed and decoded index bytes separately, not total
+allocations. No handle stays open. A CRAI has no file identity checksum.
+
+```goose
+let index = cram_index::Index { .. };
+assert(index.status == bam::Status.Closed);
+assert(index.open("") == bam::Status.IoError);
+```
+
+<a id="api-63"></a>
+
+## `cram_index::open`
+
+[source](cram_index.goose#L87-L93)
+
+```goose
+fn open(index: Index&, path: const u8[:]) -> bam::Status
+```
+
+Replace an index; errors clear the previous entries. Empty indexes are valid.
+
+```goose
+let index = cram_index::Index { .. };
+assert(index.open("") == bam::Status.IoError && index.entries.len == 0);
+```
+
+<a id="api-64"></a>
+
+## `cram_index::Cursor`
+
+[source](cram_index.goose#L104-L108)
+
+```goose
+root struct Cursor {
+    slices: Entry[>..] = [], at: i64 = 0, active: bool = false,
+    tid: i32 = -1, begin: i64 = 0, end: i64 = 0,
+    last_tid: i32 = -1, last_pos: i64 = -1, status: bam::Status = bam::Status.Closed,
+}
+```
+
+Reusable per-worker region cursor. fetch replaces its selection; read returns
+only overlapping records in physical slice/record order, including placed
+unmapped records. Call reader.record() only after read returns Record. Do not
+interleave cursors on the same reader. End/errors persist until fetch.
+
+```goose
+let cursor = cram_index::Cursor { .. };
+assert(cursor.status == bam::Status.Closed);
+```
+
+<a id="api-65"></a>
+
+## `cram_index::fetch`
+
+[source](cram_index.goose#L119-L148)
+
+```goose
+fn fetch(cursor: Cursor&, index: const Index&, reader: cram::Reader&, tid: i32, begin: i64, end: i64) -> bam::Status
+```
+
+Select candidate slices for [begin,end). Nested spans are retained, duplicate
+slice addresses removed, and selected slices sorted in file order. The caller
+must use the index for this CRAM; skipped slices are not validated.
+
+```goose
+let cursor = cram_index::Cursor { .. }; let index = cram_index::Index { .. };
+let reader = cram::Reader { .. };
+assert(cursor.fetch(index, reader, 0, 0, 1) == bam::Status.Closed);
+```
+
+<a id="api-66"></a>
+
+## `cram_index::read`
+
+[source](cram_index.goose#L159-L180)
+
+```goose
+fn read<R>(cursor: Cursor&, reader: cram::Reader&, source: R&) -> bam::Status
+```
+
+Decode only the selected slices, retaining the reader's reusable container
+and codec storage. A fetch after EOF/error may seek backward or cross contigs.
+Reference-provider semantics are the same as cram::read.
+
+```goose
+let cursor = cram_index::Cursor { .. }; let reader = cram::Reader { .. };
+let source = ExampleReference { .. };
+assert(cursor.read(reader, source) == bam::Status.Closed);
+```
+
+<a id="api-67"></a>
 
 ## `sam_writer::Writer`
 
@@ -1555,7 +1684,7 @@ let writer = sam_writer::Writer { .. };
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-62"></a>
+<a id="api-68"></a>
 
 ## `sam_writer::close`
 
@@ -1574,7 +1703,7 @@ assert(writer.close() == bam::Status.Record);
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-63"></a>
+<a id="api-69"></a>
 
 ## `sam_writer::open`
 
@@ -1604,7 +1733,7 @@ let decoded = input.record();
 assert(decoded.name() == "match");
 ```
 
-<a id="api-64"></a>
+<a id="api-70"></a>
 
 ## `sam_writer::write`
 
@@ -1625,7 +1754,7 @@ let alignment = bam_encode::Alignment { flags: 4, .. };
 assert(writer.write(alignment) == bam::Status.Closed);
 ```
 
-<a id="api-65"></a>
+<a id="api-71"></a>
 
 ## `sam_writer::write`
 
@@ -1644,7 +1773,7 @@ let alignment = bam_encode::Alignment { name: "r", flags: 4, sequence: "ACN", ..
 assert(writer.write(alignment) == bam::Status.Closed);
 ```
 
-<a id="api-66"></a>
+<a id="api-72"></a>
 
 ## `cram_writer::Writer`
 
@@ -1680,7 +1809,7 @@ let writer = cram_writer::Writer { .. };
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-67"></a>
+<a id="api-73"></a>
 
 ## `cram_writer::flush`
 
@@ -1698,7 +1827,7 @@ let writer = cram_writer::Writer { .. };
 assert(writer.flush() == bam::Status.Closed);
 ```
 
-<a id="api-68"></a>
+<a id="api-74"></a>
 
 ## `cram_writer::close`
 
@@ -1717,7 +1846,7 @@ assert(writer.close() == bam::Status.Record);
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-69"></a>
+<a id="api-75"></a>
 
 ## `cram_writer::open`
 
@@ -1748,7 +1877,7 @@ let decoded = input.record();
 assert(decoded.name() == "match");
 ```
 
-<a id="api-70"></a>
+<a id="api-76"></a>
 
 ## `cram_writer::write`
 
@@ -1770,7 +1899,7 @@ let alignment = bam_encode::Alignment { flags: 4, .. };
 assert(writer.write(alignment) == bam::Status.Closed);
 ```
 
-<a id="api-71"></a>
+<a id="api-77"></a>
 
 ## `cram_writer::write`
 

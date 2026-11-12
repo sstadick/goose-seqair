@@ -9,6 +9,7 @@ import seqair.bam_encode;
 import seqair.sam;
 import seqair.sam_writer;
 import seqair.cram;
+import seqair.cram_index;
 import seqair.cram_writer;
 import io from "github.com/sstadick/goose-io@v0.2.2";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
@@ -64,6 +65,31 @@ fn fetch(source: Reference&, name: const u8[:], begin: i64, end: i64, output: u8
 fn main() {
     let args = args();
     assert(args.len >= 3);
+    if args[1] == "cram-index" {
+        let index = cram_index::Index { .. };
+        if args.len > 3 { let limit, ok = parse_int(args[3]); assert(ok); index.max_bytes = limit; }
+        print("S\t", status_name(index.open(args[2]))); return;
+    }
+    if args[1] == "cram-indexed" {
+        let source = Reference { .. }; assert(read_file(args[3], source.data));
+        let reader = cram::Reader { .. }; defer reader.close();
+        let index = cram_index::Index { .. }; let cursor = cram_index::Cursor { .. };
+        var status = reader.open(args[2]);
+        if status == bam::Status.Record { status = index.open(args[4]); }
+        if status != bam::Status.Record { print("S\t", status_name(status)); return; }
+        var line: u8[>..] = []; var at: i64 = 5;
+        while at < args.len {
+            let begin, b = parse_int(args[at + 1]); let end, e = parse_int(args[at + 2]); assert(b && e);
+            print("Q\t", args[at], "\t", begin, "\t", end);
+            status = cursor.fetch(index, reader, reader.reference_id(args[at]), begin, end);
+            while status == bam::Status.Record {
+                status = cursor.read(reader, source);
+                if status == bam::Status.Record { let record = reader.record(); print_record(record, line); }
+            }
+            print("S\t", status_name(status)); at += 3;
+        }
+        return;
+    }
     if args[1] == "to-cram" {
         let reader = bam::Reader { .. }; defer reader.close();
         assert(reader.open(args[2]) == bam::Status.Record);

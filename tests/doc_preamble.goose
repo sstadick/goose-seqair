@@ -8,6 +8,7 @@ import seqair.bam_encode;
 import seqair.bam_writer;
 import seqair.sam;
 import seqair.cram;
+import seqair.cram_index;
 import seqair.sam_writer;
 import seqair.cram_writer;
 import io from "github.com/sstadick/goose-io@v0.2.2";
