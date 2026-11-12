@@ -4,7 +4,7 @@ import std;
 import dictionary;
 import bam;
 import bam_index;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 
 // Read-level filters. Defaults exclude unmapped, secondary, QC-failed and
 // duplicate reads (0x704), but keep supplementary alignments. No base-quality

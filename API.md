@@ -174,7 +174,7 @@ assert(record.name() == "match" && record.fields.tid == 0);
 
 ```goose
 root struct Reader {
-    stream:           bgzf::Stream,
+    stream:           bgzf::Reader,
     status:           Status         = Status.Closed,
     header:           u8[>..]        = [],
     names:            u8[>..]        = [],
@@ -1221,7 +1221,7 @@ assert(writer.tell() == 0);
 
 ```goose
 root struct Reader {
-    stream: bgzf::Stream,
+    stream: bgzf::Reader,
     compressed: bool = false,
     status: bam::Status = bam::Status.Closed,
     header: u8[>..] = [], names: u8[>..] = [], references: bam::Reference[>..] = [],
@@ -1357,7 +1357,7 @@ assert(reader.status == bam::Status.Closed); // No record is available yet.
 
 ```goose
 root struct Reader {
-    input: bgzf::Stream,
+    input: bgzf::Reader,
     status: bam::Status = bam::Status.Closed,
     header: u8[>..] = [], names: u8[>..] = [], references: bam::Reference[>..] = [],
     container: u8[>..] = [], container_header: u8[>..] = [], landmarks: i64[>..] = [],

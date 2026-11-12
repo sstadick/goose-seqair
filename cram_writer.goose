@@ -3,12 +3,12 @@ namespace cram_writer;
 import std;
 import bam;
 import bam_encode;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 import sam;
 import sam_writer;
 import pileup;
 import io from "github.com/sstadick/goose-io@v0.2.2";
-import deflate from "github.com/sstadick/goose-deflate@8fcf5832a3fa680f4c6a5332e2436f8a6dd5c299";
+import deflate from "github.com/sstadick/goose-deflate@v0.1.0";
 
 enum Key { BF, CF, RI, RL, AP, RG, RN, MF, NS, NP, TS, TL, FN, FC, FP, DL, MQ, BA, QS, IN, SC, RS, PD, HC, BB, Tags }
 inline fn index(key: Key) -> i64 {

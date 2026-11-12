@@ -5,7 +5,8 @@ import seqair.bam;
 import io from "github.com/sstadick/goose-io@v0.2.2";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 import simd_bytes from "github.com/sstadick/goose-simd@v0.3.0";
-import deflate from "github.com/sstadick/goose-deflate@8fcf5832a3fa680f4c6a5332e2436f8a6dd5c299";
+import deflate from "github.com/sstadick/goose-deflate@v0.1.0";
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 
 fn main() {
     let args = args();

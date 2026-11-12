@@ -1,7 +1,7 @@
 // Sequential BAM reader. Coordinates are zero-based, with exclusive ends.
 namespace bam;
 import std;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
 // Record means a complete validated alignment; End is normal EOF. All other
@@ -73,7 +73,7 @@ struct Record { fields: Fields, bytes: const u8[:] }
 // assert(reader.header[..3] == "@HD");
 // ```
 root struct Reader {
-    stream:           bgzf::Stream,
+    stream:           bgzf::Reader,
     status:           Status         = Status.Closed,
     header:           u8[>..]        = [],
     names:            u8[>..]        = [],

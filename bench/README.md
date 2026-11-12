@@ -470,3 +470,28 @@ Times below are milliseconds; Seqair columns use its sequential path.
 | Short reads | 5.723 | 6.676 | 5.088 | 3.379 | 3.990 |
 | High depth | 1.082 | 2.066 | 4.936 | 3.894 | 4.747 |
 | Spliced reads | 1.060 | 2.055 | 5.201 | 3.342 | 3.858 |
+
+## Standalone BGZF extraction check
+
+On 2026-11-12, the private BGZF reader/writer moved into
+[goose-bgzf v0.1.0](https://github.com/sstadick/goose-bgzf/releases/tag/v0.1.0).
+The standalone package records its own
+[read/write throughput baseline](https://github.com/sstadick/goose-bgzf/blob/main/bench/README.md).
+The native benchmark scripts now link the seek adapter from the exact resolved
+BGZF dependency instead of the deleted local copy.
+
+A warm-cache integration smoke measurement on the same Ryzen 9 3950X used
+Clang 18.1.3 `-O3 -march=native` for all timed C and libdeflate, three rounds
+of three iterations, upstream `test.bam`, and chr19:[0,61431566). Milliseconds:
+
+| BGZF implementation | BAM read | Region load | Columns |
+| --- | ---: | ---: | ---: |
+| Private copy | 7.154 | 3.787 | 5.828 |
+| Published package | 7.347 | 3.918 | 5.995 |
+
+Both produced 29,358 input records, 12,273 retained records, 968,169 entries
+and checksum 5,934,549,274,535. These short, unpinned runs were not alternated
+and overlapped other validation, so the roughly 3% timing difference does not
+establish a regression or equivalence. The extraction adds no new decoding
+algorithm. Full debug/release interoperability tests also pass with the released
+package; no upstream Seqair performance claim is inferred from this check.

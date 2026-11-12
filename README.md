@@ -2,8 +2,9 @@
 
 Experimental BAM/SAM/CRAM reading and writing, and raw pileups in [Goose](https://github.com/aardappel/goose),
 inspired by [Seqair](https://github.com/Softleif/seqair). The parser and pileup
-engine are Goose; [goose-deflate](https://github.com/sstadick/goose-deflate)
-supplies libdeflate for BGZF compression/decompression. Small native kernels
+engine are Goose; [goose-bgzf](https://github.com/sstadick/goose-bgzf)
+supplies shared BGZF reading/writing, backed by
+[goose-deflate](https://github.com/sstadick/goose-deflate). Small native kernels
 handle base packing/unpacking and packed rANS decoding. No htslib or Rust runtime dependency.
 
 **[API and executable examples](API.md)** · **[Performance baseline](bench/README.md)**
@@ -55,6 +56,8 @@ Requires Goose, CMake 3.20+, and a native C compiler, including for `goose run`
 (libdeflate is compiled natively). Tested with Goose
 [`74c641c5`](https://github.com/aardappel/goose/commit/74c641c5ac6d762e57e3177678fe9dea414d042a).
 Runtime dependencies are pinned in the source and example imports.
+Root programs must also declare `import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";`.
+The former internal BGZF implementation is now that standalone package.
 
 CRAM imports goose-simd v0.3.0. Its two shared native-only headers are vendored
 unchanged at the same revision, with provenance and license in `vendor/goose-simd`:

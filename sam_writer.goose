@@ -4,7 +4,7 @@ import std;
 import binary;
 import bam;
 import bam_encode;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 import pileup;
 import io from "github.com/sstadick/goose-io@v0.2.2";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";

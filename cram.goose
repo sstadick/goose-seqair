@@ -2,7 +2,7 @@
 namespace cram;
 import std;
 import bam;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 import sam;
 import cram_encoding;
 import cram_rans;
@@ -13,7 +13,7 @@ import cram_tok3;
 import cram_slice;
 import pileup;
 import bam_encode;
-import deflate from "github.com/sstadick/goose-deflate@8fcf5832a3fa680f4c6a5332e2436f8a6dd5c299";
+import deflate from "github.com/sstadick/goose-deflate@v0.1.0";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
 extern fn reference_md5(input: const u8[:], output: u8[:]) = "goose_seqair_reference_md5";
@@ -36,7 +36,7 @@ struct Window { begin: i64 = -1, end: i64 = 0, offset: i64 = 0 }
 // assert(reader.max_container_bytes == 268435456);
 // ```
 root struct Reader {
-    input: bgzf::Stream,
+    input: bgzf::Reader,
     status: bam::Status = bam::Status.Closed,
     header: u8[>..] = [], names: u8[>..] = [], references: bam::Reference[>..] = [],
     container: u8[>..] = [], container_header: u8[>..] = [], landmarks: i64[>..] = [],

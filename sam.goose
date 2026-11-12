@@ -4,7 +4,7 @@ import std;
 import binary;
 import bam;
 import bam_encode;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 import io from "github.com/sstadick/goose-io@v0.2.2";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
@@ -18,7 +18,7 @@ import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 // reader.close();
 // ```
 root struct Reader {
-    stream: bgzf::Stream,
+    stream: bgzf::Reader,
     compressed: bool = false,
     status: bam::Status = bam::Status.Closed,
     header: u8[>..] = [], names: u8[>..] = [], references: bam::Reference[>..] = [],

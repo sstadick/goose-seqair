@@ -41,6 +41,7 @@ def main():
         codec, = [h.parent.parent for h in headers if h.name == "deflate.h"]
         io, = [h.parent.parent for h in headers if h.name == "goosio.h"]
         bio, = [h.parent.parent for h in headers if h.name == "faidx.h"]
+        bgzf, = [h.parent.parent for h in headers if h.name == "bgzf.h"]
         build = directory / "libdeflate"
         subprocess.run(["cmake", "-S", str(codec / "vendor/libdeflate"), "-B", str(build),
                         "-DCMAKE_C_COMPILER=clang", "-DCMAKE_BUILD_TYPE=Release",
@@ -50,7 +51,7 @@ def main():
         subprocess.run(["cmake", "--build", str(build), "--target", "libdeflate_static"], env=env, check=True)
         archive, = build.rglob("libdeflate.a")
         binary = directory / "cram"
-        command = ["clang", *flags, str(source), *map(str, [ROOT / "src/cram.c", ROOT / "src/bases.c", ROOT / "src/seek.c",
+        command = ["clang", *flags, str(source), *map(str, [ROOT / "src/cram.c", ROOT / "src/bases.c", bgzf / "src/seek.c",
                    io / "src/goosio.c", bio / "src/faidx.c", archive]), "-lm", "-pthread", "-ldl", "-o", str(binary)]
         subprocess.run(command, env=env, check=True)
         report["build_command"] = command

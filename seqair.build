@@ -1,3 +1,2 @@
-c_headers = ["include/seqair.h"];
-c_sources = ["src/seek.c", "src/bases.c", "src/cram.c", "src/sam.c"];
+c_sources = ["src/bases.c", "src/cram.c", "src/sam.c"];
 exclude = ["tests", "examples", "bench", ".amp", ".ci"];

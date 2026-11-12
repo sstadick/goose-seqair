@@ -2,7 +2,7 @@
 namespace bam_encode;
 import std;
 import bam;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
 let EMPTY_CIGAR: u32[0] = [];

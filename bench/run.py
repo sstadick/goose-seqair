@@ -82,6 +82,7 @@ def main():
         headers = [(source.parent / p).resolve() for p in re.findall(r'^#include "([^"]+)"', source.read_text(), re.M)]
         codec, = [p.parent.parent for p in headers if p.name == "deflate.h"]
         io, = [p.parent.parent for p in headers if p.name == "goosio.h"]
+        bgzf, = [p.parent.parent for p in headers if p.name == "bgzf.h"]
         for index, cc in enumerate(args.cc):
             build = directory / f"codec-{index}"
             subprocess.run(["cmake", "-S", str(codec / "vendor/libdeflate"), "-B", str(build),
@@ -92,7 +93,7 @@ def main():
             archive, = build.rglob("libdeflate.a")
             exe = directory / f"bench-{index}"
             libraries = ["-lm", "-pthread"] + (["-ldl"] if platform.system() == "Linux" else [])
-            command = [cc, "-O3", "-march=native", str(source), str(ROOT / "src/seek.c"), str(ROOT / "src/bases.c"), str(ROOT / "src/sam.c"),
+            command = [cc, "-O3", "-march=native", str(source), str(bgzf / "src/seek.c"), str(ROOT / "src/bases.c"), str(ROOT / "src/sam.c"),
                        str(io / "src/goosio.c"), str(archive), "-o", str(exe), *libraries]
             print("Native build:", command, flush=True)
             subprocess.run(command, check=True)

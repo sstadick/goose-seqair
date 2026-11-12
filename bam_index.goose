@@ -2,7 +2,7 @@
 namespace bam_index;
 import std;
 import bam;
-import bgzf;
+import bgzf from "github.com/sstadick/goose-bgzf@v0.1.0";
 import io from "github.com/sstadick/goose-io@v0.2.2";
 
 // A half-open file range in BAM virtual offsets, not ordinary byte offsets.
@@ -91,7 +91,7 @@ fn read_bytes(path: const u8[:], bytes: u8[>..]&, limit: i64) -> bam::Status {
     if n < 0 { return bam::Status.IoError; }
     if n >= 2 && buffer[0] == 31 && buffer[1] == 139 {
         io::close(file);
-        var stream = bgzf::Stream { .. };
+        var stream = bgzf::Reader { .. };
         defer stream.close();
         let opened = stream.open(path);
         if opened != bgzf::Status.Ready { return bam::from_bgzf(opened); }
