@@ -44,6 +44,7 @@ struct SlimRecord {
 // CIGAR words, qualities and raw auxiliary bytes each have their own slab.
 // Decode accepted reads once at load time; no packed BAM copy is retained.
 // max_bytes limits the sum of slab payload bytes, not metadata or capacity.
+// Its default is 2^32-1 bytes (4 GiB minus one); buffers grow on demand.
 // The payload is also limited to 2^32-1 bytes to bound the u32 slab offsets.
 // Exceeding either limit fails the load. Header data stays with the reader.
 // Treat all fields except max_bytes as read-only after load.
@@ -70,7 +71,7 @@ root struct Store {
     tid:        i32             = -1,
     begin:      i64             = 0,
     end:        i64             = 0,
-    max_bytes:  i64             = 268435456,
+    max_bytes:  i64             = 4294967295,
 }
 
 // Borrowed slab-backed alignment, distinct from the reader's packed bam::Record.

@@ -205,6 +205,21 @@ def suite(command, directory):
     assert invoke(stored, "store", "chrA", 0, 100, 0, 91) == ["S\tTooLarge"]
     assert invoke(stored, "store", "chrA", 0, 100, 0, 92) == [even[1], odd[1], "S\tRecord"]
 
+    # A region's decoded payload can exceed 256 MiB even though each record
+    # is small enough. Keep the fixture compressed and emit only pileup rows.
+    dense = directory / "large-payload.bam"
+    with pysam.AlignmentFile(dense, "wb", header={"SQ": [{"SN": n, "LN": size} for n, size in REFS]}) as out:
+        read = pysam.AlignedSegment()
+        read.reference_id = 0; read.reference_start = 2; read.mapping_quality = 60
+        read.cigartuples = [(0, 1)]; read.query_sequence = "A"; read.query_qualities = [30]
+        read.set_tag("ZZ", "x" * (1024 * 1024), value_type="Z")
+        for i in range(257):
+            read.query_name = f"payload-{i}"
+            out.write(read)
+    expected = sorted(f"2\tpayload-{i}\t0\t0\t0\t65\t30" for i in range(257))
+    actual = invoke(dense, "pileup", "chrA", 2, 3, 0)
+    assert actual[-1] == "S\tRecord" and sorted(actual[:-1]) == expected
+
     # Every IUPAC code, asymmetric SIMD lanes, odd tails, and nonzero slab
     # offsets. A lane swap or treating the final low nibble as a base must fail.
     tails = []

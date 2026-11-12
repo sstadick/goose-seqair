@@ -94,11 +94,12 @@ by package name. No sibling SIMD checkout is required.
   partial result. `Unsorted` detects decreasing mapped coordinates in visited
   data only; indexed queries do not validate skipped blocks.
 - Default allocation limits are 16 MiB per BAM record/header text/reference-name
-  buffer, 1,048,576 references, and 256 MiB of variable slab payload per region.
+  buffer, 1,048,576 references, and 4 GiB minus one byte of variable slab payload
+  per region. Slabs grow on demand; the limit does not preallocate memory.
   The latter counts name + decoded bases + CIGAR + qualities + auxiliary bytes,
   not packed record size or total memory: metadata and buffer capacity add overhead.
-  Raise limits explicitly before loading when needed. Region payload is also
-  bounded by 2^32-1 bytes to keep slab offsets representable.
+  Set `Store.max_bytes` lower before loading to impose a smaller budget. Region
+  payload cannot exceed 2^32-1 bytes, keeping slab offsets representable.
 
 `bam_index::Index.open` takes an explicit BAI or CSI path, raw or BGZF-compressed.
 It bounds decompressed index input to 256 MiB by default (`max_bytes`), validates

@@ -621,7 +621,7 @@ assert(store.records[0].pos == 5 && store.records[0].seq_len == 13);
 
 ## `pileup::Store`
 
-[source](pileup.goose#L62-L74)
+[source](pileup.goose#L63-L75)
 
 ```goose
 root struct Store {
@@ -635,7 +635,7 @@ root struct Store {
     tid:        i32             = -1,
     begin:      i64             = 0,
     end:        i64             = 0,
-    max_bytes:  i64             = 268435456,
+    max_bytes:  i64             = 4294967295,
 }
 ```
 
@@ -643,6 +643,7 @@ Seqair-style region storage: metadata, names, unpacked IUPAC codes (0..15),
 CIGAR words, qualities and raw auxiliary bytes each have their own slab.
 Decode accepted reads once at load time; no packed BAM copy is retained.
 max_bytes limits the sum of slab payload bytes, not metadata or capacity.
+Its default is 2^32-1 bytes (4 GiB minus one); buffers grow on demand.
 The payload is also limited to 2^32-1 bytes to bound the u32 slab offsets.
 Exceeding either limit fails the load. Header data stays with the reader.
 Treat all fields except max_bytes as read-only after load.
@@ -663,7 +664,7 @@ assert(record.name() == "match");
 
 ## `pileup::Record`
 
-[source](pileup.goose#L89-L93)
+[source](pileup.goose#L90-L94)
 
 ```goose
 struct Record {
@@ -691,7 +692,7 @@ assert(record.fields.seq_len == record.bases.len);
 
 ## `pileup::record`
 
-[source](pileup.goose#L106-L116)
+[source](pileup.goose#L107-L117)
 
 ```goose
 fn record(store: const Store&, index: i64) -> Record
@@ -713,7 +714,7 @@ assert(record.base(1) == 'C');
 
 ## `pileup::name`
 
-[source](pileup.goose#L129-L129)
+[source](pileup.goose#L130-L130)
 
 ```goose
 fn name(record: const Record&) -> const u8[:]
@@ -735,7 +736,7 @@ assert(record.name() == "match");
 
 ## `pileup::cigar`
 
-[source](pileup.goose#L142-L142)
+[source](pileup.goose#L143-L143)
 
 ```goose
 fn cigar(record: const Record&, index: i64) -> u32
@@ -757,7 +758,7 @@ assert(record.cigar(0) == 13 << 4);
 
 ## `pileup::base`
 
-[source](pileup.goose#L156-L156)
+[source](pileup.goose#L157-L157)
 
 ```goose
 fn base(record: const Record&, index: i64) -> u8
@@ -780,7 +781,7 @@ assert(record.base(1) == 'C');
 
 ## `pileup::quality`
 
-[source](pileup.goose#L169-L169)
+[source](pileup.goose#L170-L170)
 
 ```goose
 fn quality(record: const Record&, index: i64) -> u8
@@ -802,7 +803,7 @@ assert(record.quality(1) == 20);
 
 ## `pileup::aux`
 
-[source](pileup.goose#L182-L182)
+[source](pileup.goose#L183-L183)
 
 ```goose
 fn aux(record: const Record&) -> const u8[:]
@@ -824,7 +825,7 @@ assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 
 ## `pileup::MateLinkStats`
 
-[source](pileup.goose#L204-L204)
+[source](pileup.goose#L205-L205)
 
 ```goose
 struct MateLinkStats { pairs: i64 = 0, ambiguous_qnames: i64 = 0 }
@@ -845,7 +846,7 @@ assert(stats.pairs == 0 && stats.ambiguous_qnames == 0);
 
 ## `pileup::link_mates`
 
-[source](pileup.goose#L221-L257)
+[source](pileup.goose#L222-L258)
 
 ```goose
 fn link_mates(store: Store&) -> MateLinkStats
@@ -871,7 +872,7 @@ assert(store.link_mates().pairs == 0 && store.records[0].mate_index == -1);
 
 ## `pileup::load`
 
-[source](pileup.goose#L277-L293)
+[source](pileup.goose#L278-L294)
 
 ```goose
 fn load<R>(store: Store&, reader: R&, tid: i32, begin: i64, end: i64,
@@ -901,7 +902,7 @@ assert(store.records.len == 0 && store.bases.len == 0);
 
 ## `pileup::load_indexed`
 
-[source](pileup.goose#L327-L341)
+[source](pileup.goose#L328-L342)
 
 ```goose
 fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Index&,
@@ -945,7 +946,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::Op`
 
-[source](pileup.goose#L461-L461)
+[source](pileup.goose#L462-L462)
 
 ```goose
 enum Op { Base, Deletion, RefSkip }
@@ -962,7 +963,7 @@ assert(pileup::Op.Deletion != pileup::Op.RefSkip);
 
 ## `pileup::Entry`
 
-[source](pileup.goose#L481-L484)
+[source](pileup.goose#L482-L485)
 
 ```goose
 struct Entry {
@@ -994,7 +995,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::columns`
 
-[source](pileup.goose#L565-L612)
+[source](pileup.goose#L566-L613)
 
 ```goose
 fn columns<F: fn(i64, const Entry[:])>(store: const Store&)
