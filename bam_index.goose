@@ -1,25 +1,53 @@
-// BAI/CSI parsing and half-open region queries. No BAM decoding lives here.
+// Read a BAM index and find file ranges that may contain alignments for a
+// genomic region. This module reads the index, not the BAM records themselves.
 namespace bam_index;
 import std;
 import bam;
 import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import io from "github.com/sstadick/goose-io@v0.3.0";
 
-// A half-open file range in BAM virtual offsets, not ordinary byte offsets.
+// A candidate range of records in a BAM file. begin is inclusive and end is
+// exclusive. These are BGZF virtual offsets: the high 48 bits locate a
+// compressed block in the file, and the low 16 bits locate a byte inside the
+// decompressed block. They are not genomic coordinates or byte distances.
+//
+// Call reader.seek(chunk.begin), then read records while reader.tell() is less
+// than chunk.end. Check each record's reference ID and alignment coordinates:
+// a chunk may include records outside the genomic region you requested.
+// A chunk describes where to read; it does not hold those records in memory.
 //
 // ```goose
 // let chunk = bam_index::Chunk { begin: 100, end: 200 };
 // assert(chunk.begin < chunk.end);
 // ```
-struct Chunk { begin: u64, end: u64 }
-struct Bin { id: u32, loffset: u64, chunks: i64, count: i64 }
-struct Reference { bins: i64, count: i64, linear: i64, linear_count: i64 }
+struct Chunk {
+    begin: u64,
+    end:   u64,
+}
 
-// Owned, reusable BAI or CSI index. open accepts an explicit index path;
-// raw and BGZF-compressed indexes are supported. No file remains open.
-// max_bytes limits decompressed input (default 256 MiB), not total memory.
-// Treat fields other than max_bytes as read-only. CSI depth is 0..10 (u32
-// bin IDs), with min_shift + 3*depth <= 62. BAI covers coordinates below 2^29.
+struct Bin {
+    id:      u32,
+    loffset: u64,
+    chunks:  i64,
+    count:   i64,
+}
+
+struct Reference {
+    bins:         i64,
+    count:        i64,
+    linear:       i64,
+    linear_count: i64,
+}
+
+// An in-memory BAM index, reusable across region queries. open reads a .bai or
+// .csi file and closes it after parsing. Both uncompressed and BGZF-compressed
+// index files are supported. Pass the index path, not the BAM path.
+//
+// max_bytes limits the decompressed index input to 256 MiB by default; parsed
+// tables and temporary buffers require additional memory. Set this limit
+// before open and otherwise treat the fields as read-only.
+// BAI supports positions below 2^29. CSI can cover longer references; accepted
+// CSI headers have depth 0..10 and min_shift + 3*depth at most 62.
 //
 // ```goose
 // let index = bam_index::Index { .. };
@@ -27,9 +55,13 @@ struct Reference { bins: i64, count: i64, linear: i64, linear_count: i64 }
 // assert(index.references.len == 2);
 // ```
 root struct Index {
-    references: Reference[>..] = [], bins: Bin[>..] = [],
-    chunks:     Chunk[>..]     = [], linear: u64[>..] = [],
-    min_shift:  i64            = 14, depth: i64 = 5, csi: bool = false,
+    references: Reference[>..] = [],
+    bins:       Bin[>..]       = [],
+    chunks:     Chunk[>..]     = [],
+    linear:     u64[>..]       = [],
+    min_shift:  i64            = 14,
+    depth:      i64            = 5,
+    csi:        bool           = false,
     status:     bam::Status    = bam::Status.Closed,
     max_bytes:  i64            = 268435456,
 }
@@ -182,9 +214,20 @@ fn lower_bound(bins: const Bin[:], id: u64) -> i64 {
     lo
 }
 
-// Replace output with sorted, merged candidate chunks for [begin, end).
-// Candidates still require BAM overlap/filter checks. Empty regions succeed
-// with no chunks; invalid references or out-of-range coordinates fail.
+// Find file ranges that may contain records overlapping one genomic region.
+// tid is the reference's zero-based index in the BAM header, not a name or
+// an offset into the header's name array. begin and end are zero-based genomic
+// coordinates: begin is included and end is excluded.
+//
+// Replaces output with chunks sorted by file position, merging overlapping
+// ranges so the same file range is not visited twice within this query.
+// Separate queries can still return overlapping chunks. The chunks are only
+// candidates: after reading, keep records with the requested tid and with
+// record.fields.pos < end and record.fields.end > begin.
+//
+// Returns Record on success, including an empty region with no chunks.
+// Invalid reference IDs or coordinates outside the index's range fail.
+// The index cannot determine whether its BAM file has changed since indexing.
 //
 // ```goose
 // let index = bam_index::Index { .. };

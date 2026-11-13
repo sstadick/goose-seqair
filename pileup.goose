@@ -1,4 +1,6 @@
-// Region pileups from coordinate-sorted BAM, loaded by scan or BAI/CSI chunks.
+// Load alignment records for a genomic region, then visit each reference
+// position together with the reads that overlap it. This is a pileup.
+// Input records must be sorted by reference ID and alignment start.
 namespace pileup;
 import std;
 import dictionary;
@@ -6,22 +8,37 @@ import bam;
 import bam_index;
 import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 
-// Read-level filters. Defaults exclude unmapped, secondary, QC-failed and
-// duplicate reads (0x704), but keep supplementary alignments. No base-quality
-// filtering or mate-overlap adjustment is applied to raw columns.
-// Unmapped and zero-reference-span records never produce columns, for any mask.
-// retain_zero_span keeps mapped zero-span records in input order in the store
-// for callers implementing read-admission policies; it defaults to false.
+// Choose which alignment records to keep when loading a region.
+// exclude_flags rejects a record when any of these SAM flag bits are set.
+// The default mask, 0x704, rejects unmapped, secondary, quality-control-failed,
+// and duplicate records. Supplementary alignments are kept.
+// min_mapq is the minimum mapping quality; it does not filter base qualities.
+// Overlapping mates are not combined when producing pileup positions.
+//
+// Unmapped records are always skipped, even with exclude_flags set to zero.
+// By default, records whose CIGAR consumes no reference positions are also
+// skipped. Set retain_zero_span to keep those mapped records in input order,
+// for example when reproducing another tool's read-count limit. They remain
+// available through Store.record(), but do not contribute to pileup positions.
 //
 // ```goose
 // let filter = pileup::Filter { min_mapq: 20, .. };
 // assert(filter.exclude_flags == 0x704 && filter.min_mapq == 20);
 // ```
-struct Filter { exclude_flags: u16 = 0x704, min_mapq: u8 = 0, retain_zero_span: bool = false }
+struct Filter {
+    exclude_flags:    u16  = 0x704,
+    min_mapq:         u8   = 0,
+    retain_zero_span: bool = false,
+}
 
-// Fixed-size metadata with offsets into Store's separate slabs. Coordinates
-// remain zero-based and half-open; slab offsets and lengths are element counts
-// (CIGAR elements are u32 words). Long CIGAR lengths are not limited to u16.
+// Metadata for one stored alignment. tid is its reference's index in the BAM
+// header. pos is the zero-based alignment start; end is the exclusive end.
+//
+// Variable-length data lives in separate arrays owned by Store. The name,
+// cigar, seq, qual, and aux fields are offsets into those arrays, not file
+// positions. Offsets and lengths count array elements: bytes for names, bases,
+// qualities, and tags; u32 operations for CIGARs. Use Store.record() to access
+// those values without calculating the array slices yourself.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -32,22 +49,45 @@ struct Filter { exclude_flags: u16 = 0x704, min_mapq: u8 = 0, retain_zero_span: 
 // assert(store.records[0].pos == 5 && store.records[0].seq_len == 13);
 // ```
 struct SlimRecord {
-    tid:      i32, pos: i64, end: i64, reference_len: i64, flags: u16, mapq: u8,
-    mate_tid: i32, mate_pos: i64, template_len: i32,
-    name:     u32, name_len: u32, cigar: u32, cigar_len: u32,
-    seq:      u32, seq_len: u32, qual: u32, aux: u32, aux_len: u32,
-    // Store index of the linked mate; -1 when absent or ineligible.
+    tid:           i32,
+    pos:           i64,
+    end:           i64,
+    reference_len: i64,
+    flags:         u16,
+    mapq:          u8,
+    mate_tid:      i32,
+    mate_pos:      i64,
+    template_len:  i32,
+    name:          u32,
+    name_len:      u32,
+    cigar:         u32,
+    cigar_len:     u32,
+    seq:           u32,
+    seq_len:       u32,
+    qual:          u32,
+    aux:           u32,
+    aux_len:       u32,
+    // Index in Store.records of the matched mate, or -1 if no mate was linked.
     mate_index: i64 = -1,
 }
 
-// Seqair-style region storage: metadata, names, unpacked IUPAC codes (0..15),
-// CIGAR words, qualities and raw auxiliary bytes each have their own slab.
-// Decode accepted reads once at load time; no packed BAM copy is retained.
-// max_bytes limits the sum of slab payload bytes, not metadata or capacity.
-// Its default is 2^32-1 bytes (4 GiB minus one); buffers grow on demand.
-// The payload is also limited to 2^32-1 bytes to bound the u32 slab offsets.
-// Exceeding either limit fails the load. Header data stays with the reader.
-// Treat all fields except max_bytes as read-only after load.
+// Owns all records loaded for one genomic region. Loading another region
+// replaces those records while reusing the allocated storage.
+//
+// Names, unpacked base codes, CIGAR operations, base qualities, and raw
+// auxiliary tags each occupy a separate growable array. These arrays are also
+// called slabs: each holds one kind of data for every record in the region.
+// Each base code is a byte from 0 to 15; record.base() converts it to a letter.
+// The original packed BAM records are not kept. Header data belongs to the
+// reader, but the stored records remain usable after that reader closes.
+//
+// max_bytes limits the combined bytes in the five data arrays. It does not
+// include record metadata, spare allocation capacity, or other readers and
+// workers. Its default and hard upper bound are 2^32-1 bytes (4 GiB minus one),
+// so the u32 offsets into these arrays remain representable. The arrays grow
+// as needed; setting the limit does not allocate that much memory. Exceeding
+// the limit fails the load instead of returning a partial set of records.
+// Set max_bytes before loading; otherwise treat the fields as read-only.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -74,9 +114,10 @@ root struct Store {
     max_bytes:  i64             = 4294967295,
 }
 
-// Borrowed slab-backed alignment, distinct from the reader's packed bam::Record.
-// Views survive reader close, but expire on the next load or slab mutation.
-// Accessors keep the same name/base/quality/CIGAR/aux semantics as bam::Record.
+// A view of one alignment owned by Store. Its slices refer to the store's
+// arrays rather than copying their contents. Closing the BAM reader does not
+// invalidate this view; loading, clearing, or modifying the store does.
+// Copy any data you need to keep before reusing the store for another region.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -89,11 +130,17 @@ root struct Store {
 // ```
 struct Record {
     fields:        SlimRecord,
-    name_bytes:    const u8[:], bases: const u8[:], cigar_words: const u32[:],
-    quality_bytes: const u8[:], aux_bytes: const u8[:],
+    name_bytes:    const u8[:],
+    bases:         const u8[:],
+    cigar_words:   const u32[:],
+    quality_bytes: const u8[:],
+    aux_bytes:     const u8[:],
 }
 
-// Borrow a stored alignment by the index provided in an Entry.
+// Access a loaded alignment without copying it. index must be between zero
+// and store.records.len - 1. You can iterate that range directly, or use the
+// record_index from a pileup entry to find the read that contributed it.
+// The returned view is valid until the store is cleared, loaded, or modified.
 //
 // ```goose
 // let reader = bam::Reader { .. };

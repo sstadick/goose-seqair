@@ -84,15 +84,30 @@
 
 ## `bam::Status`
 
-[source](bam.goose#L15-L15)
+[source](bam.goose#L21-L30)
 
 ```goose
-enum Status { Record, End, Invalid, Truncated, IoError, Closed, TooLarge, Unsorted }
+enum Status {
+    Record,
+    End,
+    Invalid,
+    Truncated,
+    IoError,
+    Closed,
+    TooLarge,
+    Unsorted,
+}
 ```
 
-Record means a complete validated alignment; End is normal EOF. All other
-statuses are sticky failures until open/seek. TooLarge is a configured size limit.
-Unsorted is returned by pileup loading, not the sequential reader.
+Result of a BAM operation. read() returns Record when an alignment is ready
+and End at normal end-of-file. open() and seek() also return Record on success,
+but you must call read() before accessing an alignment after either operation.
+
+Other values report failures. TooLarge means a configured size limit was
+exceeded. Unsorted is reported by region-loading code when mapped records
+go backward in coordinate order; the sequential reader does not check order.
+After read() returns End or an error, further reads return that same status
+until the reader is opened or successfully repositioned with seek().
 
 ```goose
 let reader = bam::Reader { .. };
@@ -103,13 +118,20 @@ assert(reader.read() == bam::Status.Closed);
 
 ## `bam::Reference`
 
-[source](bam.goose#L27-L27)
+[source](bam.goose#L45-L49)
 
 ```goose
-struct Reference { name: i64, name_len: i64, length: i64 }
+struct Reference {
+    name:     i64,
+    name_len: i64,
+    length:   i64,
+}
 ```
 
-Reference name location in Reader.names and its declared length.
+One reference sequence from the BAM header. Its position in
+reader.references is its reference ID, also called tid.
+name is a byte offset into reader.names, not the reference ID or a string.
+name_len is the name's byte length; length is the reference length in bases.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -124,21 +146,40 @@ assert(ref.length == 200000);
 
 ## `bam::Fields`
 
-[source](bam.goose#L43-L48)
+[source](bam.goose#L72-L89)
 
 ```goose
 struct Fields {
-    tid:      i32, pos: i64, end: i64, reference_len: i64, flags: u16, mapq: u8,
-    mate_tid: i32, mate_pos: i64, template_len: i32,
-    name_len: i64, cigar: i64, cigar_len: i64, seq: i64, seq_len: i64,
-    qual:     i64, aux: i64,
+    tid:           i32,
+    pos:           i64,
+    end:           i64,
+    reference_len: i64,
+    flags:         u16,
+    mapq:          u8,
+    mate_tid:      i32,
+    mate_pos:      i64,
+    template_len:  i32,
+    name_len:      i64,
+    cigar:         i64,
+    cigar_len:     i64,
+    seq:           i64,
+    seq_len:       i64,
+    qual:          i64,
+    aux:           i64,
 }
 ```
 
-Parsed offsets are relative to the record's bytes, not the file. Use the
-Record view's accessors rather than constructing this metadata yourself.
-reference_len is the CIGAR reference span; end uses BAM's minimum span of 1.
-tid/mate_tid and pos/mate_pos use -1 for missing references/positions.
+Decoded metadata for one alignment. tid is the reference's index in the BAM
+header, and pos is the zero-based alignment start. end is exclusive: an
+alignment overlaps [begin, stop) when pos < stop and end > begin.
+reference_len counts reference bases consumed by the CIGAR operations.
+For index overlap checks, end uses a minimum span of one even when the CIGAR
+consumes no reference bases. tid, mate_tid, pos, and mate_pos use -1 when
+the corresponding reference or position is missing.
+
+cigar, seq, qual, and aux are byte offsets within this record, not file
+offsets. Use Record.cigar(), base(), quality(), and aux() rather than
+interpreting the packed data yourself. Do not construct this metadata by hand.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -154,14 +195,18 @@ assert(f.seq_len == 13 && f.mate_tid == -1);
 
 ## `bam::Record`
 
-[source](bam.goose#L61-L61)
+[source](bam.goose#L103-L106)
 
 ```goose
-struct Record { fields: Fields, bytes: const u8[:] }
+struct Record {
+    fields: Fields,
+    bytes:  const u8[:],
+}
 ```
 
-A borrowed packed record. Reader views expire on the next read/seek/open/close.
-Region stores expose a separate slab-backed pileup::Record view.
+A view of the current alignment in the reader's buffers; obtaining it does
+not copy the record. Process it before the next read(), seek(), open(), or
+close(), any of which invalidates its bytes. Copy any data you need to keep.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -176,7 +221,7 @@ assert(record.name() == "match" && record.fields.tid == 0);
 
 ## `bam::Reader`
 
-[source](bam.goose#L75-L88)
+[source](bam.goose#L126-L139)
 
 ```goose
 root struct Reader {
@@ -186,7 +231,7 @@ root struct Reader {
     names:            u8[>..]        = [],
     references:       Reference[>..] = [],
     bytes:            u8[>..]        = [],
-    block_begin:      i64 = -1,
+    block_begin:      i64            = -1,
     fields:           Fields,
     data_start:       u64 = 0,
     max_record_bytes: i64 = 16777216,
@@ -195,10 +240,16 @@ root struct Reader {
 }
 ```
 
-Owns stream, header, reference dictionary and a cross-block scratch buffer.
-Records within one decoded BGZF block borrow that block without a copy.
-Construct with Reader { .. }, then open. Do not mutate implementation fields.
-Limits bound allocations from untrusted lengths and may be raised explicitly.
+Reads one BAM alignment at a time, keeping the header and reference names
+available throughout. Construct with Reader { .. }, open a BAM path, and
+call read() followed by record(). Close the reader when finished.
+
+BAM data is compressed in BGZF blocks. The reader decompresses blocks as
+needed, without loading the whole file or genomic region. A record wholly
+inside the current block refers directly to that buffer; a record spanning
+blocks is assembled in reusable temporary storage.
+Size limits guard against unexpectedly large input allocations and can be
+raised before opening. Otherwise treat implementation fields as read-only.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -212,7 +263,7 @@ assert(reader.header[..3] == "@HD");
 
 ## `bam::close`
 
-[source](bam.goose#L118-L123)
+[source](bam.goose#L169-L174)
 
 ```goose
 fn close(reader: Reader&)
@@ -232,7 +283,7 @@ assert(reader.read() == bam::Status.Closed);
 
 ## `bam::open`
 
-[source](bam.goose#L138-L152)
+[source](bam.goose#L189-L203)
 
 ```goose
 fn open(reader: Reader&, path: const u8[:]) -> Status
@@ -256,7 +307,7 @@ assert(record.name() == "match");
 
 ## `bam::tell`
 
-[source](bam.goose#L164-L164)
+[source](bam.goose#L215-L215)
 
 ```goose
 fn tell(reader: const Reader&) -> u64
@@ -277,7 +328,7 @@ assert(reader.read() == bam::Status.Record && reader.tell() > start);
 
 ## `bam::seek`
 
-[source](bam.goose#L181-L188)
+[source](bam.goose#L232-L239)
 
 ```goose
 fn seek(reader: Reader&, offset: u64) -> Status
@@ -303,7 +354,7 @@ assert(record.name() == "match");
 
 ## `bam::reference_id`
 
-[source](bam.goose#L232-L237)
+[source](bam.goose#L283-L288)
 
 ```goose
 fn reference_id(reader: const Reader&, name: const u8[:]) -> i32
@@ -323,7 +374,7 @@ assert(reader.reference_id("absent") == -1);
 
 ## `bam::record`
 
-[source](bam.goose#L252-L257)
+[source](bam.goose#L303-L308)
 
 ```goose
 fn record(reader: const Reader&) -> Record
@@ -347,7 +398,7 @@ assert(second.name() == "reverse"); // first's bytes are no longer valid.
 
 ## `bam::read`
 
-[source](bam.goose#L273-L277)
+[source](bam.goose#L324-L328)
 
 ```goose
 fn read(reader: Reader&) -> Status
@@ -372,7 +423,7 @@ assert(reader.read() == bam::Status.End);
 
 ## `bam::name`
 
-[source](bam.goose#L459-L459)
+[source](bam.goose#L510-L510)
 
 ```goose
 fn name(record: const Record&) -> const u8[:]
@@ -393,7 +444,7 @@ assert(record.name() == "match");
 
 ## `bam::cigar`
 
-[source](bam.goose#L472-L475)
+[source](bam.goose#L523-L526)
 
 ```goose
 fn cigar(record: const Record&, index: i64) -> u32
@@ -415,7 +466,7 @@ assert(record.cigar(0) == 13 << 4); // 13M
 
 ## `bam::base`
 
-[source](bam.goose#L489-L494)
+[source](bam.goose#L540-L545)
 
 ```goose
 fn base(record: const Record&, index: i64) -> u8
@@ -438,7 +489,7 @@ assert(record.base(0) == 'A' && record.base(1) == 'C');
 
 ## `bam::quality`
 
-[source](bam.goose#L507-L510)
+[source](bam.goose#L558-L561)
 
 ```goose
 fn quality(record: const Record&, index: i64) -> u8
@@ -460,7 +511,7 @@ assert(record.quality(0) == 13 && record.quality(1) == 20);
 
 ## `bam::aux`
 
-[source](bam.goose#L522-L522)
+[source](bam.goose#L573-L573)
 
 ```goose
 fn aux(record: const Record&) -> const u8[:]
@@ -481,13 +532,24 @@ assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 
 ## `bam_index::Chunk`
 
-[source](bam_index.goose#L14-L14)
+[source](bam_index.goose#L23-L26)
 
 ```goose
-struct Chunk { begin: u64, end: u64 }
+struct Chunk {
+    begin: u64,
+    end:   u64,
+}
 ```
 
-A half-open file range in BAM virtual offsets, not ordinary byte offsets.
+A candidate range of records in a BAM file. begin is inclusive and end is
+exclusive. These are BGZF virtual offsets: the high 48 bits locate a
+compressed block in the file, and the low 16 bits locate a byte inside the
+decompressed block. They are not genomic coordinates or byte distances.
+
+Call reader.seek(chunk.begin), then read records while reader.tell() is less
+than chunk.end. Check each record's reference ID and alignment coordinates:
+a chunk may include records outside the genomic region you requested.
+A chunk describes where to read; it does not hold those records in memory.
 
 ```goose
 let chunk = bam_index::Chunk { begin: 100, end: 200 };
@@ -498,23 +560,31 @@ assert(chunk.begin < chunk.end);
 
 ## `bam_index::Index`
 
-[source](bam_index.goose#L29-L35)
+[source](bam_index.goose#L57-L67)
 
 ```goose
 root struct Index {
-    references: Reference[>..] = [], bins: Bin[>..] = [],
-    chunks:     Chunk[>..]     = [], linear: u64[>..] = [],
-    min_shift:  i64            = 14, depth: i64 = 5, csi: bool = false,
+    references: Reference[>..] = [],
+    bins:       Bin[>..]       = [],
+    chunks:     Chunk[>..]     = [],
+    linear:     u64[>..]       = [],
+    min_shift:  i64            = 14,
+    depth:      i64            = 5,
+    csi:        bool           = false,
     status:     bam::Status    = bam::Status.Closed,
     max_bytes:  i64            = 268435456,
 }
 ```
 
-Owned, reusable BAI or CSI index. open accepts an explicit index path;
-raw and BGZF-compressed indexes are supported. No file remains open.
-max_bytes limits decompressed input (default 256 MiB), not total memory.
-Treat fields other than max_bytes as read-only. CSI depth is 0..10 (u32
-bin IDs), with min_shift + 3*depth <= 62. BAI covers coordinates below 2^29.
+An in-memory BAM index, reusable across region queries. open reads a .bai or
+.csi file and closes it after parsing. Both uncompressed and BGZF-compressed
+index files are supported. Pass the index path, not the BAM path.
+
+max_bytes limits the decompressed index input to 256 MiB by default; parsed
+tables and temporary buffers require additional memory. Set this limit
+before open and otherwise treat the fields as read-only.
+BAI supports positions below 2^29. CSI can cover longer references; accepted
+CSI headers have depth 0..10 and min_shift + 3*depth at most 62.
 
 ```goose
 let index = bam_index::Index { .. };
@@ -526,7 +596,7 @@ assert(index.references.len == 2);
 
 ## `bam_index::open`
 
-[source](bam_index.goose#L76-L83)
+[source](bam_index.goose#L108-L115)
 
 ```goose
 fn open(index: Index&, path: const u8[:]) -> bam::Status
@@ -547,15 +617,26 @@ assert(index.references.len == 0);
 
 ## `bam_index::query`
 
-[source](bam_index.goose#L196-L245)
+[source](bam_index.goose#L239-L288)
 
 ```goose
 fn query(index: const Index&, tid: i32, begin: i64, end: i64, output: Chunk[>..]&) -> bam::Status
 ```
 
-Replace output with sorted, merged candidate chunks for [begin, end).
-Candidates still require BAM overlap/filter checks. Empty regions succeed
-with no chunks; invalid references or out-of-range coordinates fail.
+Find file ranges that may contain records overlapping one genomic region.
+tid is the reference's zero-based index in the BAM header, not a name or
+an offset into the header's name array. begin and end are zero-based genomic
+coordinates: begin is included and end is excluded.
+
+Replaces output with chunks sorted by file position, merging overlapping
+ranges so the same file range is not visited twice within this query.
+Separate queries can still return overlapping chunks. The chunks are only
+candidates: after reading, keep records with the requested tid and with
+record.fields.pos < end and record.fields.end > begin.
+
+Returns Record on success, including an empty region with no chunks.
+Invalid reference IDs or coordinates outside the index's range fail.
+The index cannot determine whether its BAM file has changed since indexing.
 
 ```goose
 let index = bam_index::Index { .. };
@@ -569,18 +650,28 @@ assert(index.query(0, 7, 7, chunks) == bam::Status.Record && chunks.len == 0);
 
 ## `pileup::Filter`
 
-[source](pileup.goose#L20-L20)
+[source](pileup.goose#L28-L32)
 
 ```goose
-struct Filter { exclude_flags: u16 = 0x704, min_mapq: u8 = 0, retain_zero_span: bool = false }
+struct Filter {
+    exclude_flags:    u16  = 0x704,
+    min_mapq:         u8   = 0,
+    retain_zero_span: bool = false,
+}
 ```
 
-Read-level filters. Defaults exclude unmapped, secondary, QC-failed and
-duplicate reads (0x704), but keep supplementary alignments. No base-quality
-filtering or mate-overlap adjustment is applied to raw columns.
-Unmapped and zero-reference-span records never produce columns, for any mask.
-retain_zero_span keeps mapped zero-span records in input order in the store
-for callers implementing read-admission policies; it defaults to false.
+Choose which alignment records to keep when loading a region.
+exclude_flags rejects a record when any of these SAM flag bits are set.
+The default mask, 0x704, rejects unmapped, secondary, quality-control-failed,
+and duplicate records. Supplementary alignments are kept.
+min_mapq is the minimum mapping quality; it does not filter base qualities.
+Overlapping mates are not combined when producing pileup positions.
+
+Unmapped records are always skipped, even with exclude_flags set to zero.
+By default, records whose CIGAR consumes no reference positions are also
+skipped. Set retain_zero_span to keep those mapped records in input order,
+for example when reproducing another tool's read-count limit. They remain
+available through Store.record(), but do not contribute to pileup positions.
 
 ```goose
 let filter = pileup::Filter { min_mapq: 20, .. };
@@ -591,22 +682,41 @@ assert(filter.exclude_flags == 0x704 && filter.min_mapq == 20);
 
 ## `pileup::SlimRecord`
 
-[source](pileup.goose#L34-L41)
+[source](pileup.goose#L51-L72)
 
 ```goose
 struct SlimRecord {
-    tid:      i32, pos: i64, end: i64, reference_len: i64, flags: u16, mapq: u8,
-    mate_tid: i32, mate_pos: i64, template_len: i32,
-    name:     u32, name_len: u32, cigar: u32, cigar_len: u32,
-    seq:      u32, seq_len: u32, qual: u32, aux: u32, aux_len: u32,
-    // Store index of the linked mate; -1 when absent or ineligible.
+    tid:           i32,
+    pos:           i64,
+    end:           i64,
+    reference_len: i64,
+    flags:         u16,
+    mapq:          u8,
+    mate_tid:      i32,
+    mate_pos:      i64,
+    template_len:  i32,
+    name:          u32,
+    name_len:      u32,
+    cigar:         u32,
+    cigar_len:     u32,
+    seq:           u32,
+    seq_len:       u32,
+    qual:          u32,
+    aux:           u32,
+    aux_len:       u32,
+    // Index in Store.records of the matched mate, or -1 if no mate was linked.
     mate_index: i64 = -1,
 }
 ```
 
-Fixed-size metadata with offsets into Store's separate slabs. Coordinates
-remain zero-based and half-open; slab offsets and lengths are element counts
-(CIGAR elements are u32 words). Long CIGAR lengths are not limited to u16.
+Metadata for one stored alignment. tid is its reference's index in the BAM
+header. pos is the zero-based alignment start; end is the exclusive end.
+
+Variable-length data lives in separate arrays owned by Store. The name,
+cigar, seq, qual, and aux fields are offsets into those arrays, not file
+positions. Offsets and lengths count array elements: bytes for names, bases,
+qualities, and tags; u32 operations for CIGARs. Use Store.record() to access
+those values without calculating the array slices yourself.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -621,7 +731,7 @@ assert(store.records[0].pos == 5 && store.records[0].seq_len == 13);
 
 ## `pileup::Store`
 
-[source](pileup.goose#L63-L75)
+[source](pileup.goose#L103-L115)
 
 ```goose
 root struct Store {
@@ -639,14 +749,23 @@ root struct Store {
 }
 ```
 
-Seqair-style region storage: metadata, names, unpacked IUPAC codes (0..15),
-CIGAR words, qualities and raw auxiliary bytes each have their own slab.
-Decode accepted reads once at load time; no packed BAM copy is retained.
-max_bytes limits the sum of slab payload bytes, not metadata or capacity.
-Its default is 2^32-1 bytes (4 GiB minus one); buffers grow on demand.
-The payload is also limited to 2^32-1 bytes to bound the u32 slab offsets.
-Exceeding either limit fails the load. Header data stays with the reader.
-Treat all fields except max_bytes as read-only after load.
+Owns all records loaded for one genomic region. Loading another region
+replaces those records while reusing the allocated storage.
+
+Names, unpacked base codes, CIGAR operations, base qualities, and raw
+auxiliary tags each occupy a separate growable array. These arrays are also
+called slabs: each holds one kind of data for every record in the region.
+Each base code is a byte from 0 to 15; record.base() converts it to a letter.
+The original packed BAM records are not kept. Header data belongs to the
+reader, but the stored records remain usable after that reader closes.
+
+max_bytes limits the combined bytes in the five data arrays. It does not
+include record metadata, spare allocation capacity, or other readers and
+workers. Its default and hard upper bound are 2^32-1 bytes (4 GiB minus one),
+so the u32 offsets into these arrays remain representable. The arrays grow
+as needed; setting the limit does not allocate that much memory. Exceeding
+the limit fails the load instead of returning a partial set of records.
+Set max_bytes before loading; otherwise treat the fields as read-only.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -664,19 +783,23 @@ assert(record.name() == "match");
 
 ## `pileup::Record`
 
-[source](pileup.goose#L90-L94)
+[source](pileup.goose#L131-L138)
 
 ```goose
 struct Record {
     fields:        SlimRecord,
-    name_bytes:    const u8[:], bases: const u8[:], cigar_words: const u32[:],
-    quality_bytes: const u8[:], aux_bytes: const u8[:],
+    name_bytes:    const u8[:],
+    bases:         const u8[:],
+    cigar_words:   const u32[:],
+    quality_bytes: const u8[:],
+    aux_bytes:     const u8[:],
 }
 ```
 
-Borrowed slab-backed alignment, distinct from the reader's packed bam::Record.
-Views survive reader close, but expire on the next load or slab mutation.
-Accessors keep the same name/base/quality/CIGAR/aux semantics as bam::Record.
+A view of one alignment owned by Store. Its slices refer to the store's
+arrays rather than copying their contents. Closing the BAM reader does not
+invalidate this view; loading, clearing, or modifying the store does.
+Copy any data you need to keep before reusing the store for another region.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -692,13 +815,16 @@ assert(record.fields.seq_len == record.bases.len);
 
 ## `pileup::record`
 
-[source](pileup.goose#L107-L117)
+[source](pileup.goose#L154-L164)
 
 ```goose
 fn record(store: const Store&, index: i64) -> Record
 ```
 
-Borrow a stored alignment by the index provided in an Entry.
+Access a loaded alignment without copying it. index must be between zero
+and store.records.len - 1. You can iterate that range directly, or use the
+record_index from a pileup entry to find the read that contributed it.
+The returned view is valid until the store is cleared, loaded, or modified.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -714,7 +840,7 @@ assert(record.base(1) == 'C');
 
 ## `pileup::name`
 
-[source](pileup.goose#L130-L130)
+[source](pileup.goose#L177-L177)
 
 ```goose
 fn name(record: const Record&) -> const u8[:]
@@ -736,7 +862,7 @@ assert(record.name() == "match");
 
 ## `pileup::cigar`
 
-[source](pileup.goose#L143-L143)
+[source](pileup.goose#L190-L190)
 
 ```goose
 fn cigar(record: const Record&, index: i64) -> u32
@@ -758,7 +884,7 @@ assert(record.cigar(0) == 13 << 4);
 
 ## `pileup::base`
 
-[source](pileup.goose#L157-L157)
+[source](pileup.goose#L204-L204)
 
 ```goose
 fn base(record: const Record&, index: i64) -> u8
@@ -781,7 +907,7 @@ assert(record.base(1) == 'C');
 
 ## `pileup::quality`
 
-[source](pileup.goose#L170-L170)
+[source](pileup.goose#L217-L217)
 
 ```goose
 fn quality(record: const Record&, index: i64) -> u8
@@ -803,7 +929,7 @@ assert(record.quality(1) == 20);
 
 ## `pileup::aux`
 
-[source](pileup.goose#L183-L183)
+[source](pileup.goose#L230-L230)
 
 ```goose
 fn aux(record: const Record&) -> const u8[:]
@@ -825,7 +951,7 @@ assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 
 ## `pileup::MateLinkStats`
 
-[source](pileup.goose#L205-L205)
+[source](pileup.goose#L252-L252)
 
 ```goose
 struct MateLinkStats { pairs: i64 = 0, ambiguous_qnames: i64 = 0 }
@@ -846,7 +972,7 @@ assert(stats.pairs == 0 && stats.ambiguous_qnames == 0);
 
 ## `pileup::link_mates`
 
-[source](pileup.goose#L222-L258)
+[source](pileup.goose#L269-L305)
 
 ```goose
 fn link_mates(store: Store&) -> MateLinkStats
@@ -872,7 +998,7 @@ assert(store.link_mates().pairs == 0 && store.records[0].mate_index == -1);
 
 ## `pileup::load`
 
-[source](pileup.goose#L278-L294)
+[source](pileup.goose#L325-L341)
 
 ```goose
 fn load<R>(store: Store&, reader: R&, tid: i32, begin: i64, end: i64,
@@ -902,7 +1028,7 @@ assert(store.records.len == 0 && store.bases.len == 0);
 
 ## `pileup::load_indexed`
 
-[source](pileup.goose#L328-L342)
+[source](pileup.goose#L375-L389)
 
 ```goose
 fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Index&,
@@ -946,7 +1072,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::Op`
 
-[source](pileup.goose#L462-L462)
+[source](pileup.goose#L509-L509)
 
 ```goose
 enum Op { Base, Deletion, RefSkip }
@@ -963,7 +1089,7 @@ assert(pileup::Op.Deletion != pileup::Op.RefSkip);
 
 ## `pileup::Entry`
 
-[source](pileup.goose#L482-L485)
+[source](pileup.goose#L529-L532)
 
 ```goose
 struct Entry {
@@ -995,7 +1121,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::columns`
 
-[source](pileup.goose#L566-L613)
+[source](pileup.goose#L613-L660)
 
 ```goose
 fn columns<F: fn(i64, const Entry[:])>(store: const Store&)

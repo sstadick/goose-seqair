@@ -4,17 +4,35 @@ import std;
 import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
-// Record means a complete validated alignment; End is normal EOF. All other
-// statuses are sticky failures until open/seek. TooLarge is a configured size limit.
-// Unsorted is returned by pileup loading, not the sequential reader.
+// Result of a BAM operation. read() returns Record when an alignment is ready
+// and End at normal end-of-file. open() and seek() also return Record on success,
+// but you must call read() before accessing an alignment after either operation.
+//
+// Other values report failures. TooLarge means a configured size limit was
+// exceeded. Unsorted is reported by region-loading code when mapped records
+// go backward in coordinate order; the sequential reader does not check order.
+// After read() returns End or an error, further reads return that same status
+// until the reader is opened or successfully repositioned with seek().
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // assert(reader.read() == bam::Status.Closed);
 // ```
-enum Status { Record, End, Invalid, Truncated, IoError, Closed, TooLarge, Unsorted }
+enum Status {
+    Record,
+    End,
+    Invalid,
+    Truncated,
+    IoError,
+    Closed,
+    TooLarge,
+    Unsorted,
+}
 
-// Reference name location in Reader.names and its declared length.
+// One reference sequence from the BAM header. Its position in
+// reader.references is its reference ID, also called tid.
+// name is a byte offset into reader.names, not the reference ID or a string.
+// name_len is the name's byte length; length is the reference length in bases.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -24,12 +42,23 @@ enum Status { Record, End, Invalid, Truncated, IoError, Closed, TooLarge, Unsort
 // assert(reader.names[ref.name..ref.name + ref.name_len] == "chrA");
 // assert(ref.length == 200000);
 // ```
-struct Reference { name: i64, name_len: i64, length: i64 }
+struct Reference {
+    name:     i64,
+    name_len: i64,
+    length:   i64,
+}
 
-// Parsed offsets are relative to the record's bytes, not the file. Use the
-// Record view's accessors rather than constructing this metadata yourself.
-// reference_len is the CIGAR reference span; end uses BAM's minimum span of 1.
-// tid/mate_tid and pos/mate_pos use -1 for missing references/positions.
+// Decoded metadata for one alignment. tid is the reference's index in the BAM
+// header, and pos is the zero-based alignment start. end is exclusive: an
+// alignment overlaps [begin, stop) when pos < stop and end > begin.
+// reference_len counts reference bases consumed by the CIGAR operations.
+// For index overlap checks, end uses a minimum span of one even when the CIGAR
+// consumes no reference bases. tid, mate_tid, pos, and mate_pos use -1 when
+// the corresponding reference or position is missing.
+//
+// cigar, seq, qual, and aux are byte offsets within this record, not file
+// offsets. Use Record.cigar(), base(), quality(), and aux() rather than
+// interpreting the packed data yourself. Do not construct this metadata by hand.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -41,14 +70,27 @@ struct Reference { name: i64, name_len: i64, length: i64 }
 // assert(f.seq_len == 13 && f.mate_tid == -1);
 // ```
 struct Fields {
-    tid:      i32, pos: i64, end: i64, reference_len: i64, flags: u16, mapq: u8,
-    mate_tid: i32, mate_pos: i64, template_len: i32,
-    name_len: i64, cigar: i64, cigar_len: i64, seq: i64, seq_len: i64,
-    qual:     i64, aux: i64,
+    tid:           i32,
+    pos:           i64,
+    end:           i64,
+    reference_len: i64,
+    flags:         u16,
+    mapq:          u8,
+    mate_tid:      i32,
+    mate_pos:      i64,
+    template_len:  i32,
+    name_len:      i64,
+    cigar:         i64,
+    cigar_len:     i64,
+    seq:           i64,
+    seq_len:       i64,
+    qual:          i64,
+    aux:           i64,
 }
 
-// A borrowed packed record. Reader views expire on the next read/seek/open/close.
-// Region stores expose a separate slab-backed pileup::Record view.
+// A view of the current alignment in the reader's buffers; obtaining it does
+// not copy the record. Process it before the next read(), seek(), open(), or
+// close(), any of which invalidates its bytes. Copy any data you need to keep.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -58,12 +100,21 @@ struct Fields {
 // let record = reader.record();
 // assert(record.name() == "match" && record.fields.tid == 0);
 // ```
-struct Record { fields: Fields, bytes: const u8[:] }
+struct Record {
+    fields: Fields,
+    bytes:  const u8[:],
+}
 
-// Owns stream, header, reference dictionary and a cross-block scratch buffer.
-// Records within one decoded BGZF block borrow that block without a copy.
-// Construct with Reader { .. }, then open. Do not mutate implementation fields.
-// Limits bound allocations from untrusted lengths and may be raised explicitly.
+// Reads one BAM alignment at a time, keeping the header and reference names
+// available throughout. Construct with Reader { .. }, open a BAM path, and
+// call read() followed by record(). Close the reader when finished.
+//
+// BAM data is compressed in BGZF blocks. The reader decompresses blocks as
+// needed, without loading the whole file or genomic region. A record wholly
+// inside the current block refers directly to that buffer; a record spanning
+// blocks is assembled in reusable temporary storage.
+// Size limits guard against unexpectedly large input allocations and can be
+// raised before opening. Otherwise treat implementation fields as read-only.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -79,7 +130,7 @@ root struct Reader {
     names:            u8[>..]        = [],
     references:       Reference[>..] = [],
     bytes:            u8[>..]        = [],
-    block_begin:      i64 = -1,
+    block_begin:      i64            = -1,
     fields:           Fields,
     data_start:       u64 = 0,
     max_record_bytes: i64 = 16777216,
