@@ -87,7 +87,12 @@ struct SlimRecord {
 // so the u32 offsets into these arrays remain representable. The arrays grow
 // as needed; setting the limit does not allocate that much memory. Exceeding
 // the limit fails the load instead of returning a partial set of records.
-// Set max_bytes before loading; otherwise treat the fields as read-only.
+// Set max_bytes before loading. retain_auxiliary=false omits optional BAM tags
+// from stored records; record.aux() then returns an empty slice. CIGARs using
+// the CG tag are still resolved before storage. auto_link_mates=false skips
+// finding primary mate pairs: mate_index remains -1 and mate_stats stays zero
+// until you explicitly call link_mates(). Both options default to true and
+// survive store reuse. Otherwise treat the fields as read-only.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -101,17 +106,19 @@ struct SlimRecord {
 // assert(record.name() == "match");
 // ```
 root struct Store {
-    records:    SlimRecord[>..] = [],
-    names:      u8[>..]         = [],
-    bases:      u8[>..]         = [],
-    cigars:     u32[>..]        = [],
-    qualities:  u8[>..]         = [],
-    auxiliary:  u8[>..]         = [],
-    mate_stats: MateLinkStats   = MateLinkStats { .. },
-    tid:        i32             = -1,
-    begin:      i64             = 0,
-    end:        i64             = 0,
-    max_bytes:  i64             = 4294967295,
+    records:          SlimRecord[>..] = [],
+    names:            u8[>..]         = [],
+    bases:            u8[>..]         = [],
+    cigars:           u32[>..]        = [],
+    qualities:        u8[>..]         = [],
+    auxiliary:        u8[>..]         = [],
+    mate_stats:       MateLinkStats   = MateLinkStats { .. },
+    tid:              i32             = -1,
+    begin:            i64             = 0,
+    end:              i64             = 0,
+    max_bytes:        i64             = 4294967295,
+    retain_auxiliary: bool            = true,
+    auto_link_mates:  bool            = true,
 }
 
 // A view of one alignment owned by Store. Its slices refer to the store's
@@ -217,6 +224,7 @@ fn base(record: const Record&, index: i64) -> u8 { "=ACMGRSVTWYHKDBN"[record.bas
 fn quality(record: const Record&, index: i64) -> u8 { record.quality_bytes[index] }
 
 // Raw auxiliary bytes, including the original CG array for long CIGARs.
+// Empty when Store.retain_auxiliary was false during loading.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -255,7 +263,8 @@ struct MateLinkStats { pairs: i64 = 0, ambiguous_qnames: i64 = 0 }
 // same-reference mate fields and reciprocal positions (not READ1/READ2 bits).
 // Secondary/supplementary, unmapped/mate-unmapped and empty-name records are
 // excluded. No outside-region mate fetch or overlap correction is performed.
-// Both load paths call this once after loading. Calling again is idempotent;
+// Loaders call this after loading when Store.auto_link_mates is true (default).
+// Calling again is idempotent;
 // reordering/removing records requires relinking before reading mate_index.
 //
 // ```goose
@@ -304,13 +313,17 @@ fn link_mates(store: Store&) -> MateLinkStats {
     stats
 }
 
-// Scan from the reader's current position for [begin, end) on tid. Requires
-// coordinate-sorted input and a freshly opened reader for independent queries.
+// Read forward and retain alignments overlapping [begin, end) on reference tid.
+// tid is the reference's index in the BAM header; coordinates are zero-based,
+// with end excluded. Requires coordinate-sorted input and a freshly opened
+// reader for each independent query.
 // Returns Record on success, including an empty region. Error clears the store.
 // This is not an indexed query: it reads preceding records and consumes the
 // first mapped record beyond the region. Reopen before a different query.
 // Unsorted detects decreasing mapped coordinates only in the scanned prefix;
 // it cannot validate the unvisited remainder of a file. Empty regions do no I/O.
+// Set store.retain_auxiliary=false to omit optional tags from retained records,
+// or store.auto_link_mates=false to skip finding their primary mate partners.
 //
 // ```goose
 // let reader = bam::Reader { .. };
@@ -336,13 +349,18 @@ fn load<R>(store: Store&, reader: R&, tid: i32, begin: i64, end: i64,
     let status = scan_stream(store, reader, filter);
     if status != bam::Status.Record {
         store.clear();
-    } else { store.link_mates(); }
+    } else if store.auto_link_mates {
+        store.link_mates();
+    }
     status
 }
 
-// Load [begin, end) via a matching BAI/CSI index and link retained mates.
-// Reuses the open reader, index and slab capacity across independent queries,
+// Use a matching BAM index to load alignments overlapping [begin, end).
+// tid is the reference's index in the BAM header; coordinates are zero-based,
+// with end excluded. Reuses the open reader, index and allocated record arrays,
 // including backward queries and queries after EOF. No prefix scan or reopen.
+// Set store.retain_auxiliary=false to omit optional tags from retained records,
+// or store.auto_link_mates=false to skip finding their primary mate partners.
 // Like Seqair, rejects non-overlapping/filtered raw records before full decode.
 // BGZF and record framing are always checked; names/auxiliary/query lengths
 // of discarded records are not validated. Retained records are fully checked.
@@ -383,8 +401,11 @@ fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Ind
     var chunks: bam_index::Chunk[>..] = [];
     var status = index.query(tid, begin, end, chunks);
     if status == bam::Status.Record && chunks.len > 0 { status = scan(store, reader, filter, chunks); }
-    if status != bam::Status.Record { store.clear(); }
-    else { store.link_mates(); }
+    if status != bam::Status.Record {
+        store.clear();
+    } else if store.auto_link_mates {
+        store.link_mates();
+    }
     status
 }
 
@@ -555,7 +576,7 @@ fn scan(store: Store&, reader: bam::Reader&, filter: Filter,
 fn retain(store: Store&, record: const bam::Record&) -> bam::Status {
     let f = record.fields;
     let name = record.name();
-    let aux = record.aux();
+    let aux = if store.retain_auxiliary { record.aux() } else { record.bytes[..0] };
     let used = store.names.len + store.bases.len + store.cigars.len * 4 +
                store.qualities.len + store.auxiliary.len;
     let added = name.len + 2 * f.seq_len + 4 * f.cigar_len + aux.len;

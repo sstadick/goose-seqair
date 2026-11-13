@@ -506,7 +506,9 @@ fn reference_id(reader: const Reader&, name: const u8[:]) -> i32 { sam::find_ref
 
 // Load a region through the shared pileup engine, with a reference provider.
 // Requires sorted input and a freshly opened reader per independent query,
-// like the BAM/SAM sequential path. Errors clear the store; success links mates.
+// like the BAM/SAM sequential path. Errors clear the store. On success, the
+// store retains auxiliary tags and links mates unless its retain_auxiliary
+// or auto_link_mates option is false.
 //
 // ```goose
 // let reader = cram::Reader { .. };
@@ -536,6 +538,10 @@ fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: 
         status = pileup::retain(store, record);
         if status != bam::Status.Record { break; }
     }
-    if status != bam::Status.Record { store.clear(); } else { store.link_mates(); }
+    if status != bam::Status.Record {
+        store.clear();
+    } else if store.auto_link_mates {
+        store.link_mates();
+    }
     status
 }

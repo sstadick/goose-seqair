@@ -901,21 +901,23 @@ assert(store.records[0].pos == 5 && store.records[0].seq_len == 13);
 
 ## `pileup::Store`
 
-[source](pileup.goose#L103-L115)
+[source](pileup.goose#L108-L122)
 
 ```goose
 root struct Store {
-    records:    SlimRecord[>..] = [],
-    names:      u8[>..]         = [],
-    bases:      u8[>..]         = [],
-    cigars:     u32[>..]        = [],
-    qualities:  u8[>..]         = [],
-    auxiliary:  u8[>..]         = [],
-    mate_stats: MateLinkStats   = MateLinkStats { .. },
-    tid:        i32             = -1,
-    begin:      i64             = 0,
-    end:        i64             = 0,
-    max_bytes:  i64             = 4294967295,
+    records:          SlimRecord[>..] = [],
+    names:            u8[>..]         = [],
+    bases:            u8[>..]         = [],
+    cigars:           u32[>..]        = [],
+    qualities:        u8[>..]         = [],
+    auxiliary:        u8[>..]         = [],
+    mate_stats:       MateLinkStats   = MateLinkStats { .. },
+    tid:              i32             = -1,
+    begin:            i64             = 0,
+    end:              i64             = 0,
+    max_bytes:        i64             = 4294967295,
+    retain_auxiliary: bool            = true,
+    auto_link_mates:  bool            = true,
 }
 ```
 
@@ -935,7 +937,12 @@ workers. Its default and hard upper bound are 2^32-1 bytes (4 GiB minus one),
 so the u32 offsets into these arrays remain representable. The arrays grow
 as needed; setting the limit does not allocate that much memory. Exceeding
 the limit fails the load instead of returning a partial set of records.
-Set max_bytes before loading; otherwise treat the fields as read-only.
+Set max_bytes before loading. retain_auxiliary=false omits optional BAM tags
+from stored records; record.aux() then returns an empty slice. CIGARs using
+the CG tag are still resolved before storage. auto_link_mates=false skips
+finding primary mate pairs: mate_index remains -1 and mate_stats stays zero
+until you explicitly call link_mates(). Both options default to true and
+survive store reuse. Otherwise treat the fields as read-only.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -953,7 +960,7 @@ assert(record.name() == "match");
 
 ## `pileup::Record`
 
-[source](pileup.goose#L131-L138)
+[source](pileup.goose#L138-L145)
 
 ```goose
 struct Record {
@@ -985,7 +992,7 @@ assert(record.fields.seq_len == record.bases.len);
 
 ## `pileup::record`
 
-[source](pileup.goose#L154-L164)
+[source](pileup.goose#L161-L171)
 
 ```goose
 fn record(store: const Store&, index: i64) -> Record
@@ -1010,7 +1017,7 @@ assert(record.base(1) == 'C');
 
 ## `pileup::name`
 
-[source](pileup.goose#L177-L177)
+[source](pileup.goose#L184-L184)
 
 ```goose
 fn name(record: const Record&) -> const u8[:]
@@ -1032,7 +1039,7 @@ assert(record.name() == "match");
 
 ## `pileup::cigar`
 
-[source](pileup.goose#L190-L190)
+[source](pileup.goose#L197-L197)
 
 ```goose
 fn cigar(record: const Record&, index: i64) -> u32
@@ -1054,7 +1061,7 @@ assert(record.cigar(0) == 13 << 4);
 
 ## `pileup::base`
 
-[source](pileup.goose#L204-L204)
+[source](pileup.goose#L211-L211)
 
 ```goose
 fn base(record: const Record&, index: i64) -> u8
@@ -1077,7 +1084,7 @@ assert(record.base(1) == 'C');
 
 ## `pileup::quality`
 
-[source](pileup.goose#L217-L217)
+[source](pileup.goose#L224-L224)
 
 ```goose
 fn quality(record: const Record&, index: i64) -> u8
@@ -1099,13 +1106,14 @@ assert(record.quality(1) == 20);
 
 ## `pileup::aux`
 
-[source](pileup.goose#L230-L230)
+[source](pileup.goose#L238-L238)
 
 ```goose
 fn aux(record: const Record&) -> const u8[:]
 ```
 
 Raw auxiliary bytes, including the original CG array for long CIGARs.
+Empty when Store.retain_auxiliary was false during loading.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -1121,7 +1129,7 @@ assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 
 ## `pileup::MateLinkStats`
 
-[source](pileup.goose#L252-L252)
+[source](pileup.goose#L260-L260)
 
 ```goose
 struct MateLinkStats { pairs: i64 = 0, ambiguous_qnames: i64 = 0 }
@@ -1142,7 +1150,7 @@ assert(stats.pairs == 0 && stats.ambiguous_qnames == 0);
 
 ## `pileup::link_mates`
 
-[source](pileup.goose#L269-L305)
+[source](pileup.goose#L278-L314)
 
 ```goose
 fn link_mates(store: Store&) -> MateLinkStats
@@ -1152,7 +1160,8 @@ Link primary mapped pairs already in the store, using equal name bytes,
 same-reference mate fields and reciprocal positions (not READ1/READ2 bits).
 Secondary/supplementary, unmapped/mate-unmapped and empty-name records are
 excluded. No outside-region mate fetch or overlap correction is performed.
-Both load paths call this once after loading. Calling again is idempotent;
+Loaders call this after loading when Store.auto_link_mates is true (default).
+Calling again is idempotent;
 reordering/removing records requires relinking before reading mate_index.
 
 ```goose
@@ -1168,20 +1177,24 @@ assert(store.link_mates().pairs == 0 && store.records[0].mate_index == -1);
 
 ## `pileup::load`
 
-[source](pileup.goose#L325-L341)
+[source](pileup.goose#L338-L356)
 
 ```goose
 fn load<R>(store: Store&, reader: R&, tid: i32, begin: i64, end: i64,
         filter: Filter = Filter { .. }) -> bam::Status
 ```
 
-Scan from the reader's current position for [begin, end) on tid. Requires
-coordinate-sorted input and a freshly opened reader for independent queries.
+Read forward and retain alignments overlapping [begin, end) on reference tid.
+tid is the reference's index in the BAM header; coordinates are zero-based,
+with end excluded. Requires coordinate-sorted input and a freshly opened
+reader for each independent query.
 Returns Record on success, including an empty region. Error clears the store.
 This is not an indexed query: it reads preceding records and consumes the
 first mapped record beyond the region. Reopen before a different query.
 Unsorted detects decreasing mapped coordinates only in the scanned prefix;
 it cannot validate the unvisited remainder of a file. Empty regions do no I/O.
+Set store.retain_auxiliary=false to omit optional tags from retained records,
+or store.auto_link_mates=false to skip finding their primary mate partners.
 
 ```goose
 let reader = bam::Reader { .. };
@@ -1198,16 +1211,19 @@ assert(store.records.len == 0 && store.bases.len == 0);
 
 ## `pileup::load_indexed`
 
-[source](pileup.goose#L375-L389)
+[source](pileup.goose#L393-L410)
 
 ```goose
 fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Index&,
                 tid: i32, begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status
 ```
 
-Load [begin, end) via a matching BAI/CSI index and link retained mates.
-Reuses the open reader, index and slab capacity across independent queries,
+Use a matching BAM index to load alignments overlapping [begin, end).
+tid is the reference's index in the BAM header; coordinates are zero-based,
+with end excluded. Reuses the open reader, index and allocated record arrays,
 including backward queries and queries after EOF. No prefix scan or reopen.
+Set store.retain_auxiliary=false to omit optional tags from retained records,
+or store.auto_link_mates=false to skip finding their primary mate partners.
 Like Seqair, rejects non-overlapping/filtered raw records before full decode.
 BGZF and record framing are always checked; names/auxiliary/query lengths
 of discarded records are not validated. Retained records are fully checked.
@@ -1242,7 +1258,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L415-L421)
+[source](pileup.goose#L436-L442)
 
 ```goose
 fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
@@ -1279,7 +1295,7 @@ assert(count == 2);
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L438-L442)
+[source](pileup.goose#L459-L463)
 
 ```goose
 fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
@@ -1307,7 +1323,7 @@ status.check(bam::Status.Record);
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L458-L463)
+[source](pileup.goose#L479-L484)
 
 ```goose
 fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
@@ -1333,7 +1349,7 @@ status.check(bam::Status.Record);
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L477-L480)
+[source](pileup.goose#L498-L501)
 
 ```goose
 fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
@@ -1357,7 +1373,7 @@ status.check(bam::Status.Record);
 
 ## `pileup::Op`
 
-[source](pileup.goose#L600-L600)
+[source](pileup.goose#L621-L621)
 
 ```goose
 enum Op { Base, Deletion, RefSkip }
@@ -1374,7 +1390,7 @@ assert(pileup::Op.Deletion != pileup::Op.RefSkip);
 
 ## `pileup::Entry`
 
-[source](pileup.goose#L620-L623)
+[source](pileup.goose#L641-L644)
 
 ```goose
 struct Entry {
@@ -1406,7 +1422,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::columns`
 
-[source](pileup.goose#L704-L751)
+[source](pileup.goose#L725-L772)
 
 ```goose
 fn columns<F: fn(i64, const Entry[:])>(store: const Store&)
@@ -1952,7 +1968,7 @@ assert(reader.reference_id("missing") == -1);
 
 ## `cram::load`
 
-[source](cram.goose#L517-L541)
+[source](cram.goose#L519-L547)
 
 ```goose
 fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: i64, end: i64,
@@ -1961,7 +1977,9 @@ fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: 
 
 Load a region through the shared pileup engine, with a reference provider.
 Requires sorted input and a freshly opened reader per independent query,
-like the BAM/SAM sequential path. Errors clear the store; success links mates.
+like the BAM/SAM sequential path. Errors clear the store. On success, the
+store retains auxiliary tags and links mates unless its retain_auxiliary
+or auto_link_mates option is false.
 
 ```goose
 let reader = cram::Reader { .. };

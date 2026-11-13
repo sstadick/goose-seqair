@@ -460,6 +460,17 @@ def suite(command, directory):
     for suffix in (".bai", ".csi"):
         assert invoke(path, "indexed-mates", "chrA", 0, 100, 0, 0, str(path) + suffix) == expected
         assert invoke(path, "indexed-mates", "chrA", 5, 6, 0, 0, str(path) + suffix) == ["M\t0\t0", "0\t-1", "S\tRecord"]
+    # Opting out changes only auxiliary retention and automatic mate links.
+    # The long-CIGAR record must still resolve its operations from the CG tag.
+    for source in (path, large, sources[2]):
+        if not Path(str(source) + ".bai").exists():
+            pysam.index(str(source))
+        normal = invoke(source, "store", "chrA", 0, 100000, 0)
+        without_aux = [line.rsplit("\t", 1)[0] + "\t" if line.startswith("R\t") else line
+                       for line in normal]
+        assert invoke(source, "lean", "chrA", 0, 100000, 0) == without_aux
+        assert invoke(source, "indexed-lean", "chrA", 0, 100000, 0, 0,
+                      str(source) + ".bai") == without_aux
     print(f"PASS {command}: wire/index/seek/mate cases and {comparisons} htslib comparisons on each of scan/BAI/CSI", flush=True)
     from cram import suite as cram_suite
     cram_suite(command, directory)

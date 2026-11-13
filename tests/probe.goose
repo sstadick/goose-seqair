@@ -348,7 +348,8 @@ fn main() {
     if args[1] == "limit" { reader.max_record_bytes = 64; reader.max_header_bytes = 64; }
     var status = reader.open(args[2]);
     var line: u8[>..] = [];
-    let indexed = args[1] == "indexed" || args[1] == "indexed-store" || args[1] == "indexed-mates";
+    let lean = args[1] == "lean" || args[1] == "indexed-lean";
+    let indexed = args[1] == "indexed" || args[1] == "indexed-store" || args[1] == "indexed-mates" || args[1] == "indexed-lean";
     let mates = args[1] == "mates" || args[1] == "indexed-mates";
     if args[1] == "write" || args[1] == "write-store" || args[1] == "write-new" || args[1] == "write-fail" {
         assert(status == bam::Status.Record && args.len == 5);
@@ -420,13 +421,17 @@ fn main() {
         assert(reader.seek(0) == bam::Status.Invalid);
         assert(reader.seek(offsets[0]) == bam::Status.Record);
         status = reader.read();
-    } else if args[1] == "pileup" || args[1] == "budget" || args[1] == "store" || indexed || mates {
+    } else if args[1] == "pileup" || args[1] == "budget" || args[1] == "store" || indexed || mates || lean {
         assert(args.len == 7 || args.len == 8 || args.len == 9);
         let begin, a = parse_int(args[4]);
         let end, b = parse_int(args[5]);
         let mask, c = parse_int(args[6]);
         assert(a && b && c);
         let store = pileup::Store { .. };
+        if lean {
+            store.retain_auxiliary = false;
+            store.auto_link_mates = false;
+        }
         var min_mapq: i64 = 0;
         if args.len >= 8 {
             let value, ok = parse_int(args[7]);
@@ -462,13 +467,20 @@ fn main() {
         }
         reader.close();
         if status == bam::Status.Record {
+            if lean {
+                assert(store.auxiliary.len == 0);
+                assert(store.mate_stats.pairs == 0 && store.mate_stats.ambiguous_qnames == 0);
+                for item in store.records {
+                    assert(item.mate_index == -1);
+                }
+            }
             if mates {
                 let stats = store.mate_stats;
                 let again = store.link_mates();
                 assert(stats.pairs == again.pairs && stats.ambiguous_qnames == again.ambiguous_qnames);
                 print("M\t", stats.pairs, "\t", stats.ambiguous_qnames);
                 for i in store.records.len { print(i, "\t", store.records[i].mate_index); }
-            } else if args[1] == "store" || args[1] == "indexed-store" {
+            } else if args[1] == "store" || args[1] == "indexed-store" || lean {
                 for i in store.records.len {
                     let record = store.record(i);
                     print_record(record, line);

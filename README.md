@@ -162,8 +162,10 @@ placeholder. Use sequential reading to validate every record, not a region
 query. Loading invalidates the reader's current record view; call `read()`
 before borrowing another one with `record()`.
 
-Both loaders automatically link eligible primary mapped mates already in the
-store. `record.fields.mate_index` is the partner's store index, or -1. Linking
+By default, loaders automatically link eligible primary mapped mates already in
+the store. Set `Store.auto_link_mates = false` before loading to skip that work;
+all mate indexes remain -1 until an explicit `store.link_mates()` call.
+`record.fields.mate_index` is the partner's store index, or -1. Linking
 matches name bytes, same-reference mate fields and reciprocal positions, like
 Seqair; READ1/READ2 bits alone do not determine a pair. Secondary/supplementary,
 unmapped/mate-unmapped, empty-name, and cross-reference mates do not link.
@@ -171,6 +173,13 @@ unmapped/mate-unmapped, empty-name, and cross-reference mates do not link.
 silently collapse extra primary alignments. Links are replaced on load and can
 be rebuilt with `store.link_mates()`. Mates outside the region are not fetched,
 and linking does not change column depth or remove overlapping observations.
+
+Set `Store.retain_auxiliary = false` before loading when the consumer does not
+need optional BAM tags. Stored records then return an empty `aux()` slice, and
+the omitted bytes do not count toward `max_bytes`. Readers still validate tags
+and resolve long CIGARs from `CG` before retention. This skips the extra store
+copy, not CRAM's reconstruction of tags. Both store options survive reuse and
+default to true, preserving existing record and writer behavior.
 
 BGZF checks include its `BC` subfield, compressed/uncompressed sizes, CRC, and
 exact decompressor consumption. Records can cross any number of blocks. Empty
