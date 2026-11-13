@@ -388,6 +388,97 @@ fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Ind
     status
 }
 
+// Load an indexed region and visit its covered positions. The callback gets
+// a zero-based position and entries borrowed for that call; store.record()
+// accesses contributing reads. Uses load_indexed's filters, mate linking and
+// storage options. A failed load clears the store and invokes no callbacks.
+// Returns Record on success, including empty regions. Do not reload or mutate
+// the store inside the callback. Repeated queries reuse its storage.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// let index = bam_index::Index { .. };
+// index.open_for("tests/data/example.bam").check(bam::Status.Record);
+// let store = pileup::Store { .. };
+// var count = 0;
+// let status = store.pileup(reader, index, 0 as i32, 5, 7) { pos, entries =>
+//     assert(pos == 5 + count && entries.len == 1);
+//     let record = store.record(entries[0].record_index);
+//     assert(record.name() == "match");
+//     count += 1;
+// };
+// status.check(bam::Status.Record);
+// assert(count == 2);
+// ```
+fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
+        index: const bam_index::Index&, tid: i32, begin: i64, end: i64,
+        filter: Filter = Filter { .. }) -> bam::Status {
+    let status = store.load_indexed(reader, index, tid, begin, end, filter);
+    if status == bam::Status.Record { store.columns(F); }
+    status
+}
+
+// Indexed pileup by reference name. An unknown name returns Invalid and clears
+// the store without invoking the callback; otherwise identical to the tid form.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// let index = bam_index::Index { .. };
+// index.open_for("tests/data/example.bam").check(bam::Status.Record);
+// let store = pileup::Store { .. };
+// let status = store.pileup(reader, index, "chrA", 5, 7) { pos, entries =>
+//     assert(entries.len == 1);
+// };
+// status.check(bam::Status.Record);
+// ```
+fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
+        index: const bam_index::Index&, name: const u8[:], begin: i64, end: i64,
+        filter: Filter = Filter { .. }) -> bam::Status {
+    store.pileup(reader, index, reader.reference_id(name), begin, end, filter, F)
+}
+
+// Sequential pileup without an index. Uses load's sorted-input contract and
+// scans forward from the current position; reopen before an independent query.
+// Like the indexed form, callbacks run only after a successful complete load.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// let store = pileup::Store { .. };
+// let status = store.pileup(reader, 0 as i32, 5, 7) { pos, entries =>
+//     assert(entries.len == 1);
+// };
+// status.check(bam::Status.Record);
+// ```
+fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
+        tid: i32, begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status {
+    let status = store.load(reader, tid, begin, end, filter);
+    if status == bam::Status.Record { store.columns(F); }
+    status
+}
+
+// Sequential pileup by reference name, with the same behavior as the tid form.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// let store = pileup::Store { .. };
+// let status = store.pileup(reader, "chrA", 5, 7) { pos, entries =>
+//     assert(entries.len == 1);
+// };
+// status.check(bam::Status.Record);
+// ```
+fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
+        name: const u8[:], begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status {
+    store.pileup(reader, reader.reference_id(name), begin, end, filter, F)
+}
+
 fn scan_stream<R>(store: Store&, reader: R&, filter: Filter) -> bam::Status {
     var last_tid: i32 = -1;
     var last_pos: i64 = -1;

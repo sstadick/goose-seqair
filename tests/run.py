@@ -49,10 +49,17 @@ def suite(command, directory):
     fixtures = records()
     data = header() + b"".join(r for r, _ in fixtures)
     expected = expected_header + [e for _, e in fixtures] + ["S\tEnd"]
+    assert invoke("unused", "check-api") == ["S\tRecord"]
+    for mode, message in (("check-abort", "BAM status mismatch: expected Record, got End"),
+                          ("check-abort-message", "Failed to open BAM file: expected Record, got IoError")):
+        result = subprocess.run([*map(str, command), mode, "unused"], cwd=ROOT, text=True, capture_output=True)
+        assert result.returncode != 0 and message in result.stdout + result.stderr, result
     for chunk in (1, 17, 65536):
         path = write(f"split-{chunk}.bam", bgzf(data, chunk, empty=True, extra=b"XY\x03\x00abc"))
         assert invoke(path) == expected, f"BGZF split {chunk}"
         assert invoke(path, "seek") == [e for _, e in reversed(fixtures)] + ["S\tRecord"]
+        assert invoke(path, "records") == [e for _, e in fixtures] + ["S\tRecord"]
+        assert invoke(path, "records-first") == [e for _, e in fixtures[1:]] + ["S\tRecord"]
     # Switch between borrowed block records and cross-block scratch, including
     # a split length word, a body ending exactly at the boundary, and a body
     # missing only its final byte. Seeking backward must make the same switch.
@@ -66,6 +73,10 @@ def suite(command, directory):
     assert invoke(write("no-marker.bam", bgzf(data)[:-28])) == expected
     assert invoke(write("empty.bam", bgzf(header()))) == expected_header + ["S\tEnd"]
     assert invoke(directory / "missing.bam") == ["S\tIoError"]
+    assert invoke(directory / "missing.bam", "records") == ["S\tIoError"]
+    assert invoke(directory / "empty.bam", "records") == ["S\tRecord"]
+    assert invoke(write("records-truncated.bam", bgzf(header() + fixtures[0][0] + fixtures[1][0][:-1])),
+                  "records") == [fixtures[0][1], "S\tTruncated"]
     assert invoke(path, "limit")[-1] == "S\tTooLarge"
     assert invoke(path, "budget", "chrA", 0, 100, 0)[-1] == "S\tTooLarge"
     assert invoke(path, "pileup", "chrA", 20, 20, 0) == ["S\tRecord"]
@@ -266,6 +277,30 @@ def suite(command, directory):
     unsorted = write("unsorted.bam", bgzf(header() + fixtures[1][0] + fixtures[0][0]))
     assert invoke(unsorted, "pileup", "chrA", 0, 100, 0)[-1] == "S\tUnsorted"
 
+    # Convenience queries preserve order, fields and filters, with name/tid
+    # overloads, backward reuse, empty regions and recovery after invalid input.
+    def helper_queries(path, alignments, queries, indexes=(".bai", ".csi")):
+        by_name = {e.split("\t")[1]: e for _, e in alignments}
+        fetched, columns = [], []
+        with pysam.AlignmentFile(path) as reader:
+            for contig, begin, end in queries:
+                label = f"Q\t{contig}\t{begin}\t{end}"
+                fetched.append(label); columns.append(label)
+                valid = contig in reader.references and 0 <= begin <= end <= reader.get_reference_length(contig)
+                if valid and begin < end:
+                    fetched.extend(by_name[r.query_name] for r in reader.fetch(contig, begin, end))
+                    columns.extend(oracle(path, begin, end, 0x704, contig=contig))
+                status = "S\tRecord" if valid else "S\tInvalid"
+                fetched.append(status); columns.append(status)
+        args = [v for query in queries for v in query]
+        for suffix in indexes:
+            for mode in ("fetch", "fetch-tid"):
+                assert invoke(path, mode, str(path) + suffix, *args) == fetched, (path, mode, suffix)
+            for mode in ("columns", "columns-tid"):
+                assert invoke(path, mode, str(path) + suffix, *args) == columns, (path, mode, suffix)
+        for mode in ("columns-scan", "columns-scan-tid"):
+            assert invoke(path, mode, "-", *args) == columns, (path, mode)
+
     # Compare individual records, qpos, base, quality, D/N and anchored indels,
     # not only depth. Window boundaries cut through reads and CIGAR operations.
     comparisons = 0
@@ -273,6 +308,9 @@ def suite(command, directory):
         path = write(name + ".bam", bgzf(header() + b"".join(r for r, _ in alignments)))
         pysam.index(str(path))
         pysam.index("-c", str(path))
+        helper_queries(path, alignments, [("chrA", 75, 100), ("chrA", 11, 18), ("chrA", 18, 19),
+            ("chrA", 22, 25), ("chrA", 7, 7), ("chrA", 150000, 150010), ("missing", 0, 10),
+            ("chrA", -1, 10), ("chrA", 10, 9), ("chrA", 0, 200001), ("chrA", 5, 7)])
         text_path = write(name + ".sam", pysam.view("-h", "--no-PG", str(path)).encode())
         for begin, end in [(0, 150), (11, 18), (18, 19), (75, 100)]:
             for mask, min_mapq in ((0, 0), (0x704, 0), (0x704, 20), (0, 42)):
@@ -293,6 +331,29 @@ def suite(command, directory):
     pysam.index(str(path))
     assert invoke(path, "pileup", "chrB", 0, 10, 0) == oracle(path, 0, 10, 0, contig="chrB") + ["S\tRecord"]
     assert invoke(path, "indexed", "chrB", 0, 10, 0, 0, str(path) + ".bai") == oracle(path, 0, 10, 0, contig="chrB") + ["S\tRecord"]
+    helper_queries(path, [fixtures[0], (second, second_expected), (unmapped, unmapped_expected)],
+                   [("chrB", 0, 10), ("chrA", 5, 18)], indexes=(".bai",))
+
+    # Discovery: test every spelling independently, then precedence and a bad
+    # preferred index alongside a valid fallback. Failures clear a prior index.
+    discovered = write("discover.bam", bgzf(header() + b"".join(r for r, _ in fixtures)))
+    pysam.index(str(discovered)); pysam.index("-c", str(discovered))
+    bai, csi = (Path(str(discovered) + suffix).read_bytes() for suffix in (".bai", ".csi"))
+    candidates = [Path(str(discovered) + ".csi"), discovered.with_suffix(".csi"),
+                  Path(str(discovered) + ".bai"), discovered.with_suffix(".bai")]
+    for candidate in candidates: candidate.unlink(missing_ok=True)
+    saved = write("saved-index.bai", bai)
+    assert invoke(discovered, "open-for", saved) == ["S\tIoError"]
+    for candidate in candidates:
+        candidate.write_bytes(csi if candidate.suffix == ".csi" else bai)
+        assert invoke(discovered, "open-for") == ["S\tRecord"]
+        assert invoke(discovered, "fetch", "-", "chrA", 5, 7) == ["Q\tchrA\t5\t7", fixtures[0][1], "S\tRecord"]
+        candidate.unlink()
+    for i, candidate in enumerate(candidates[:-1]):
+        for fallback in candidates[i + 1:]: fallback.write_bytes(bai if fallback.suffix == ".bai" else csi)
+        candidate.write_bytes(b"BAD!")
+        assert invoke(discovered, "open-for", saved) == ["S\tInvalid"]
+        for item in candidates: item.unlink(missing_ok=True)
 
     # Coarse bins, disjoint chunks, bin boundaries, long skips starting before
     # the window, and out-of-order reuse. htslib builds both kinds of index.
@@ -300,6 +361,8 @@ def suite(command, directory):
     spanning += [record(f"at{p}", p, [("M", 7)]) for p in (16380, 16384, 32768, 65534, 131072, 180000)]
     path = write("bins.bam", bgzf(header() + b"".join(r for r, _ in spanning), 83))
     pysam.index(str(path)); pysam.index("-c", "-m", "12", str(path))
+    helper_queries(path, spanning, [("chrA", 179999, 180006), ("chrA", 16383, 16385),
+                                    ("chrA", 65535, 65538), ("chrA", 2, 3)])
     for begin, end in ((16383, 16385), (65535, 65538), (131071, 131075), (179999, 180006), (2, 3), (190000, 190010), (8, 8)):
         expected = oracle(path, begin, end, 0) + ["S\tRecord"] if begin != end else ["S\tRecord"]
         for suffix in (".bai", ".csi"):
@@ -314,6 +377,8 @@ def suite(command, directory):
         len(header()), len(raw), 2, 0, 1, len(header()), 0, 0))
     index = write("root.bai", index_bytes)
     assert invoke(path, "indexed-store", "chrA", 5, 18, 0, 0, index) == [fixtures[0][1], fixtures[1][1], "S\tRecord"]
+    assert invoke(path, "fetch", index, "chrA", 5, 18) == ["Q\tchrA\t5\t18", fixtures[0][1], fixtures[1][1], "S\tRecord"]
+    assert invoke(unsorted, "fetch", index, "chrA", 0, 100)[-1] == "S\tUnsorted"
     assert invoke(index, "index", len(index_bytes)) == ["S\tRecord"]
     assert invoke(index, "index", len(index_bytes) - 1) == ["S\tTooLarge"]
     assert invoke(write("compressed.bai", bgzf(index_bytes, 17)), "index") == ["S\tRecord"]
@@ -351,10 +416,12 @@ def suite(command, directory):
         start << 16, (start + len(late_block)) << 16, 0, 0, 0))
     assert invoke(path)[-1] == "S\tInvalid"
     assert invoke(path, "indexed-store", "chrA", 100000, 100005, 0, 0, index) == [late_expected, "S\tRecord"]
+    assert invoke(path, "fetch", index, "chrA", 100000, 100005) == ["Q\tchrA\t100000\t100005", late_expected, "S\tRecord"]
     # Nonexistent blocks and out-of-block uncompressed offsets must fail.
     for offset in ((start << 16) | 65535, (len(prefix + corrupt + late_block) + 1000) << 16):
         bad = write("bad-offset.bai", b"BAI\x01" + struct.pack("<iiiiQQiii", 2, 1, 0, 1, offset, offset + 1, 0, 0, 0))
         assert invoke(path, "indexed", "chrA", 100000, 100005, 0, 0, bad)[-1] in ("S\tInvalid", "S\tTruncated")
+        assert invoke(path, "fetch", bad, "chrA", 100000, 100005)[-1] in ("S\tInvalid", "S\tTruncated")
 
     # CSI's configurable tree must handle coordinates BAI cannot represent.
     high, high_expected = record("high", 600000000, [("M", 8)])
@@ -364,6 +431,7 @@ def suite(command, directory):
     raw_csi = write("raw.csi", gzip.decompress(csi.read_bytes()))
     for index in (csi, raw_csi):
         assert invoke(path, "indexed-store", "chrA", 600000003, 600000005, 0, 0, index) == [high_expected, "S\tRecord"]
+        assert invoke(path, "fetch", index, "chrA", 600000003, 600000005) == ["Q\tchrA\t600000003\t600000005", high_expected, "S\tRecord"]
     for cut in range(len(raw_csi.read_bytes())):
         # CSI's optional final eight-byte count may be absent, but not partial.
         if cut == len(raw_csi.read_bytes()) - 8: continue

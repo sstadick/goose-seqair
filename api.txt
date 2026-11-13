@@ -1,4 +1,5 @@
 bam::Status
+bam::check
 bam::Reference
 bam::Fields
 bam::Record
@@ -8,6 +9,7 @@ bam::open
 bam::reference_id
 bam::record
 bam::read
+bam::records
 bam::tell
 bam::seek
 bam::name
@@ -27,6 +29,7 @@ pileup::quality
 pileup::aux
 pileup::load
 pileup::load_indexed
+pileup::pileup
 pileup::MateLinkStats
 pileup::link_mates
 pileup::Op
@@ -35,7 +38,9 @@ pileup::columns
 bam_index::Chunk
 bam_index::Index
 bam_index::open
+bam_index::open_for
 bam_index::query
+bam_index::fetch
 bam_encode::Alignment
 bam_encode::encode
 bam_writer::Writer

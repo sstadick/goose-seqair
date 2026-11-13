@@ -22,6 +22,7 @@ library; substitute your own coordinate-sorted BAM and contig/coordinates.
 ```sh
 python3 tests/fixtures.py tests/data/example.bam
 goose run examples/records.goose -- tests/data/example.bam
+goose run examples/records.goose -- tests/data/example.bam chrA 5 18
 goose run examples/pileup.goose -- tests/data/example.bam chrA 5 18
 goose run examples/pileup.goose -- tests/data/example.bam chrA 5 18 tests/data/example.bam.bai
 ```
@@ -30,19 +31,31 @@ goose run examples/pileup.goose -- tests/data/example.bam chrA 5 18 tests/data/e
 sequence length. `examples/pileup.goose` prints zero-based position and raw
 depth. Depth includes deletion and reference-skip entries.
 
-The [complete pileup example](examples/pileup.goose) declares all transitive
-imports required by Goose. Its main API calls are:
+The [record example](examples/records.goose) and [pileup example](examples/pileup.goose)
+declare all transitive imports required by Goose. For sequential iteration:
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+let status = reader.records() { record => print(record.name()); };
+status.check(bam::Status.Record);
+```
+
+For indexed records and pileups, open the index once and reuse it:
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
 let index = bam_index::Index { .. };
-assert(index.open("tests/data/example.bam.bai") == bam::Status.Record);
+index.open_for("tests/data/example.bam").check(bam::Status.Record);
+let fetched = index.fetch(reader, "chrA", 5, 18) { record =>
+    print(record.name());
+};
+fetched.check(bam::Status.Record);
 let store = pileup::Store { .. };
-assert(store.load_indexed(reader, index, reader.reference_id("chrA"), 5, 18) == bam::Status.Record);
-assert(store.mate_stats.ambiguous_qnames == 0);
-store.columns() { pos, entries =>
+let piled = store.pileup(reader, index, "chrA", 5, 18) { pos, entries =>
     for &entry in entries {
         let record = store.record(entry.record_index);
         // record.name(), record.fields.flags, entry.base, entry.quality,
@@ -50,7 +63,35 @@ store.columns() { pos, entries =>
         assert(record.fields.pos <= pos);
     }
 };
+piled.check(bam::Status.Record);
+assert(store.mate_stats.ambiguous_qnames == 0);
 ```
+
+`fetch` and `pileup` accept either a reference name or an `i32` ID. Omit the
+index argument for a sequential pileup. All three iteration helpers return
+`Record` on successful completion, including empty results; low-level `read()`
+still returns `End` at EOF. Record callbacks borrow the reader's bytes and can
+precede a later read error. Pileup callbacks run only after a successful load.
+Do not reposition the reader inside record callbacks or mutate the store inside
+column callbacks. Inline `return` stops iteration by exiting the enclosing function.
+
+`check(expected)` and `check(expected, message)` return the actual status on a
+match and abort on a mismatch, printing both status names. For recovery, pass a
+handler instead; it runs only on a mismatch:
+
+```goose
+fn open_input(reader: bam::Reader&, path: const u8[:]) -> bool {
+    reader.open(path).check(bam::Status.Record) { actual =>
+        return false; // Returns from open_input, running its deferred cleanup.
+    };
+    return true;
+}
+```
+
+A handler that falls through returns the original status unchanged, without
+aborting. Named handlers return to `check`; inline blocks can return from their
+enclosing named function. Abort is uncatchable and does not run deferred cleanup.
+The status-returning APIs remain available without `check`.
 
 Requires Goose, CMake 3.20+, and a native C compiler, including for `goose run`
 (libdeflate is compiled natively). Tested with Goose

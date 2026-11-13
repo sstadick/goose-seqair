@@ -62,9 +62,125 @@ fn fetch(source: Reference&, name: const u8[:], begin: i64, end: i64, output: u8
     output.len == end - begin
 }
 
+fn check_return(actual: bam::Status, expected: bam::Status, cleaned: bool&) -> i64, bool {
+    defer cleaned = true;
+    let status = actual.check(expected) { error =>
+        assert(error == actual);
+        return 17, false;
+    };
+    assert(status == actual);
+    return 23, true;
+}
+
+fn check_named(actual: bam::Status) { assert(actual == bam::Status.Closed); }
+
+fn first_record(reader: bam::Reader&) -> u8[], bool {
+    reader.records() { record => return str(record.name()), true; };
+    return "", false;
+}
+
 fn main() {
     let args = args();
     assert(args.len >= 3);
+    if args[1] == "check-abort" {
+        bam::Status.End.check(bam::Status.Record); return;
+    }
+    if args[1] == "check-abort-message" {
+        bam::Status.IoError.check(bam::Status.Record, "Failed to open BAM file"); return;
+    }
+    if args[1] == "check-api" {
+        let statuses = [bam::Status.Record, bam::Status.End, bam::Status.Invalid, bam::Status.Truncated,
+            bam::Status.IoError, bam::Status.Closed, bam::Status.TooLarge, bam::Status.Unsorted];
+        for actual in statuses {
+            assert(actual.check(actual) == actual);
+            assert(actual.check(actual, "matched") == actual);
+            for expected in statuses {
+                var called = 0;
+                let status = actual.check(expected) { error =>
+                    assert(error == actual); called += 1;
+                };
+                assert(status == actual && called == (if actual == expected { 0 } else { 1 }));
+                var cleaned = false;
+                let n, ok = check_return(actual, expected, cleaned);
+                assert(cleaned && ok == (actual == expected) && n == (if ok { 23 } else { 17 }));
+            }
+        }
+        assert(bam::Status.Closed.check(bam::Status.Record, check_named) == bam::Status.Closed);
+        print("S\tRecord"); return;
+    }
+    if args[1] == "records" || args[1] == "records-first" {
+        let reader = bam::Reader { .. }; defer reader.close();
+        var status = reader.open(args[2]);
+        var line: u8[>..] = [];
+        if status == bam::Status.Record {
+            if args[1] == "records-first" {
+                let name, found = first_record(reader);
+                assert(found && name == "match");
+            }
+            status = reader.records() { record => print_record(record, line); };
+            let repeated = reader.records() { record => assert(false); };
+            assert(repeated == status);
+        }
+        print("S\t", status_name(status)); return;
+    }
+    if args[1] == "open-for" {
+        let index = bam_index::Index { .. };
+        if args.len > 3 { index.open(args[3]).check(bam::Status.Record); }
+        let status = index.open_for(args[2]);
+        if status != bam::Status.Record { assert(index.references.len == 0); }
+        print("S\t", status_name(status)); return;
+    }
+    if args[1] == "fetch" || args[1] == "fetch-tid" || args[1] == "columns" ||
+       args[1] == "columns-tid" || args[1] == "columns-scan" || args[1] == "columns-scan-tid" {
+        let reader = bam::Reader { .. }; defer reader.close();
+        let index = bam_index::Index { .. };
+        let store = pileup::Store { .. };
+        let scan = args[1] == "columns-scan" || args[1] == "columns-scan-tid";
+        let by_tid = args[1] == "fetch-tid" || args[1] == "columns-tid" || args[1] == "columns-scan-tid";
+        var status = reader.open(args[2]);
+        if status == bam::Status.Record && !scan {
+            status = if args[3] == "-" { index.open_for(args[2]) } else { index.open(args[3]) };
+        }
+        if status != bam::Status.Record { print("S\t", status_name(status)); return; }
+        // Exercise fetch/seek recovery after reaching EOF on this same reader.
+        reader.records() { record => };
+        var line: u8[>..] = [];
+        fn column(pos: i64, entries: const pileup::Entry[:]) {
+            for &entry in entries {
+                let record = store.record(entry.record_index);
+                let op = match entry.op { Base => 0, Deletion => 1, RefSkip => 2 };
+                line.clear();
+                format(line, pos, "\t", record.name(), "\t", entry.qpos, "\t", op, "\t",
+                       entry.indel, "\t", entry.base as i64, "\t", entry.quality as i64, "\n");
+                write_stdout(line);
+            }
+        }
+        var at: i64 = 4;
+        while at < args.len {
+            let begin, b = parse_int(args[at + 1]); let end, e = parse_int(args[at + 2]); assert(b && e);
+            let tid = reader.reference_id(args[at]);
+            print("Q\t", args[at], "\t", begin, "\t", end);
+            if scan { reader.open(args[2]).check(bam::Status.Record); }
+            if args[1] == "fetch" {
+                status = index.fetch(reader, args[at], begin, end) { record => print_record(record, line); };
+            } else if args[1] == "fetch-tid" {
+                status = index.fetch(reader, tid, begin, end) { record => print_record(record, line); };
+            } else if scan {
+                status = if by_tid { store.pileup(reader, tid, begin, end, column) }
+                    else { store.pileup(reader, args[at], begin, end, column) };
+            } else {
+                status = if by_tid { store.pileup(reader, index, tid, begin, end, column) }
+                    else { store.pileup(reader, index, args[at], begin, end, column) };
+            }
+            if status != bam::Status.Record { assert(store.records.len == 0); }
+            print("S\t", status_name(status));
+            at += 3;
+        }
+        reader.close();
+        let closed = index.fetch(reader, 0, 0, 1) { record => assert(false); };
+        assert(closed == bam::Status.Closed);
+        return;
+    }
     if args[1] == "cram-index" {
         let index = cram_index::Index { .. };
         if args.len > 3 { let limit, ok = parse_int(args[3]); assert(ok); index.max_bytes = limit; }

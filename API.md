@@ -3,82 +3,92 @@
 # goose-seqair API
 
 - [`bam::Status`](#api-1)
-- [`bam::Reference`](#api-2)
-- [`bam::Fields`](#api-3)
-- [`bam::Record`](#api-4)
-- [`bam::Reader`](#api-5)
-- [`bam::close`](#api-6)
-- [`bam::open`](#api-7)
-- [`bam::tell`](#api-8)
-- [`bam::seek`](#api-9)
-- [`bam::reference_id`](#api-10)
-- [`bam::record`](#api-11)
-- [`bam::read`](#api-12)
-- [`bam::name`](#api-13)
-- [`bam::cigar`](#api-14)
-- [`bam::base`](#api-15)
-- [`bam::quality`](#api-16)
-- [`bam::aux`](#api-17)
-- [`bam_index::Chunk`](#api-18)
-- [`bam_index::Index`](#api-19)
-- [`bam_index::open`](#api-20)
-- [`bam_index::query`](#api-21)
-- [`pileup::Filter`](#api-22)
-- [`pileup::SlimRecord`](#api-23)
-- [`pileup::Store`](#api-24)
-- [`pileup::Record`](#api-25)
-- [`pileup::record`](#api-26)
-- [`pileup::name`](#api-27)
-- [`pileup::cigar`](#api-28)
-- [`pileup::base`](#api-29)
-- [`pileup::quality`](#api-30)
-- [`pileup::aux`](#api-31)
-- [`pileup::MateLinkStats`](#api-32)
-- [`pileup::link_mates`](#api-33)
-- [`pileup::load`](#api-34)
-- [`pileup::load_indexed`](#api-35)
-- [`pileup::Op`](#api-36)
-- [`pileup::Entry`](#api-37)
-- [`pileup::columns`](#api-38)
-- [`bam_encode::Alignment`](#api-39)
-- [`bam_encode::encode`](#api-40)
-- [`bam_writer::Writer`](#api-41)
-- [`bam_writer::close`](#api-42)
-- [`bam_writer::open`](#api-43)
-- [`bam_writer::write`](#api-44)
-- [`bam_writer::write`](#api-45)
-- [`bam_writer::write`](#api-46)
-- [`bam_writer::tell`](#api-47)
-- [`sam::Reader`](#api-48)
-- [`sam::close`](#api-49)
-- [`sam::open`](#api-50)
-- [`sam::reference_id`](#api-51)
-- [`sam::read`](#api-52)
-- [`sam::record`](#api-53)
-- [`cram::Reader`](#api-54)
-- [`cram::close`](#api-55)
-- [`cram::open`](#api-56)
-- [`cram::seek_slice`](#api-57)
-- [`cram::read`](#api-58)
-- [`cram::record`](#api-59)
-- [`cram::reference_id`](#api-60)
-- [`cram::load`](#api-61)
-- [`cram_index::Index`](#api-62)
-- [`cram_index::open`](#api-63)
-- [`cram_index::Cursor`](#api-64)
-- [`cram_index::fetch`](#api-65)
-- [`cram_index::read`](#api-66)
-- [`sam_writer::Writer`](#api-67)
-- [`sam_writer::close`](#api-68)
-- [`sam_writer::open`](#api-69)
-- [`sam_writer::write`](#api-70)
-- [`sam_writer::write`](#api-71)
-- [`cram_writer::Writer`](#api-72)
-- [`cram_writer::flush`](#api-73)
-- [`cram_writer::close`](#api-74)
-- [`cram_writer::open`](#api-75)
-- [`cram_writer::write`](#api-76)
-- [`cram_writer::write`](#api-77)
+- [`bam::check`](#api-2)
+- [`bam::check`](#api-3)
+- [`bam::Reference`](#api-4)
+- [`bam::Fields`](#api-5)
+- [`bam::Record`](#api-6)
+- [`bam::Reader`](#api-7)
+- [`bam::close`](#api-8)
+- [`bam::open`](#api-9)
+- [`bam::tell`](#api-10)
+- [`bam::seek`](#api-11)
+- [`bam::reference_id`](#api-12)
+- [`bam::record`](#api-13)
+- [`bam::read`](#api-14)
+- [`bam::records`](#api-15)
+- [`bam::name`](#api-16)
+- [`bam::cigar`](#api-17)
+- [`bam::base`](#api-18)
+- [`bam::quality`](#api-19)
+- [`bam::aux`](#api-20)
+- [`bam_index::Chunk`](#api-21)
+- [`bam_index::Index`](#api-22)
+- [`bam_index::open`](#api-23)
+- [`bam_index::open_for`](#api-24)
+- [`bam_index::query`](#api-25)
+- [`bam_index::fetch`](#api-26)
+- [`bam_index::fetch`](#api-27)
+- [`pileup::Filter`](#api-28)
+- [`pileup::SlimRecord`](#api-29)
+- [`pileup::Store`](#api-30)
+- [`pileup::Record`](#api-31)
+- [`pileup::record`](#api-32)
+- [`pileup::name`](#api-33)
+- [`pileup::cigar`](#api-34)
+- [`pileup::base`](#api-35)
+- [`pileup::quality`](#api-36)
+- [`pileup::aux`](#api-37)
+- [`pileup::MateLinkStats`](#api-38)
+- [`pileup::link_mates`](#api-39)
+- [`pileup::load`](#api-40)
+- [`pileup::load_indexed`](#api-41)
+- [`pileup::pileup`](#api-42)
+- [`pileup::pileup`](#api-43)
+- [`pileup::pileup`](#api-44)
+- [`pileup::pileup`](#api-45)
+- [`pileup::Op`](#api-46)
+- [`pileup::Entry`](#api-47)
+- [`pileup::columns`](#api-48)
+- [`bam_encode::Alignment`](#api-49)
+- [`bam_encode::encode`](#api-50)
+- [`bam_writer::Writer`](#api-51)
+- [`bam_writer::close`](#api-52)
+- [`bam_writer::open`](#api-53)
+- [`bam_writer::write`](#api-54)
+- [`bam_writer::write`](#api-55)
+- [`bam_writer::write`](#api-56)
+- [`bam_writer::tell`](#api-57)
+- [`sam::Reader`](#api-58)
+- [`sam::close`](#api-59)
+- [`sam::open`](#api-60)
+- [`sam::reference_id`](#api-61)
+- [`sam::read`](#api-62)
+- [`sam::record`](#api-63)
+- [`cram::Reader`](#api-64)
+- [`cram::close`](#api-65)
+- [`cram::open`](#api-66)
+- [`cram::seek_slice`](#api-67)
+- [`cram::read`](#api-68)
+- [`cram::record`](#api-69)
+- [`cram::reference_id`](#api-70)
+- [`cram::load`](#api-71)
+- [`cram_index::Index`](#api-72)
+- [`cram_index::open`](#api-73)
+- [`cram_index::Cursor`](#api-74)
+- [`cram_index::fetch`](#api-75)
+- [`cram_index::read`](#api-76)
+- [`sam_writer::Writer`](#api-77)
+- [`sam_writer::close`](#api-78)
+- [`sam_writer::open`](#api-79)
+- [`sam_writer::write`](#api-80)
+- [`sam_writer::write`](#api-81)
+- [`cram_writer::Writer`](#api-82)
+- [`cram_writer::flush`](#api-83)
+- [`cram_writer::close`](#api-84)
+- [`cram_writer::open`](#api-85)
+- [`cram_writer::write`](#api-86)
+- [`cram_writer::write`](#api-87)
 
 <a id="api-1"></a>
 
@@ -116,9 +126,56 @@ assert(reader.read() == bam::Status.Closed);
 
 <a id="api-2"></a>
 
+## `bam::check`
+
+[source](bam.goose#L50-L55)
+
+```goose
+fn check(actual: Status, expected: Status, message: const u8[:] = "BAM status mismatch") -> Status
+```
+
+Require an explicit expected status, returning the actual status on a match.
+A mismatch aborts with the expected and actual names and optional context.
+Abort is not catchable and does not run deferred cleanup. For recovery, use
+the callback overload or inspect the status directly. End is not Record.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record, "opening BAM");
+reader.read().check(bam::Status.Record);
+```
+
+<a id="api-3"></a>
+
+## `bam::check`
+
+[source](bam.goose#L71-L74)
+
+```goose
+fn check<F: fn(Status)>(actual: Status, expected: Status) -> Status
+```
+
+Invoke the handler only on a mismatch. If it falls through, return the
+original status unchanged; there is no automatic abort. A return inside an
+inline block exits its enclosing named function and runs deferred cleanup.
+A named handler returns normally to check instead.
+
+```goose
+var called = false;
+let status = bam::Status.Closed.check(bam::Status.Record) { actual =>
+    assert(actual == bam::Status.Closed);
+    called = true;
+};
+assert(called && status == bam::Status.Closed);
+bam::Status.End.check(bam::Status.End) { actual => assert(false); };
+```
+
+<a id="api-4"></a>
+
 ## `bam::Reference`
 
-[source](bam.goose#L45-L49)
+[source](bam.goose#L89-L93)
 
 ```goose
 struct Reference {
@@ -142,11 +199,11 @@ assert(reader.names[ref.name..ref.name + ref.name_len] == "chrA");
 assert(ref.length == 200000);
 ```
 
-<a id="api-3"></a>
+<a id="api-5"></a>
 
 ## `bam::Fields`
 
-[source](bam.goose#L72-L89)
+[source](bam.goose#L116-L133)
 
 ```goose
 struct Fields {
@@ -191,11 +248,11 @@ assert(f.pos == 5 && f.end == 18 && f.reference_len == 13);
 assert(f.seq_len == 13 && f.mate_tid == -1);
 ```
 
-<a id="api-4"></a>
+<a id="api-6"></a>
 
 ## `bam::Record`
 
-[source](bam.goose#L103-L106)
+[source](bam.goose#L147-L150)
 
 ```goose
 struct Record {
@@ -217,11 +274,11 @@ let record = reader.record();
 assert(record.name() == "match" && record.fields.tid == 0);
 ```
 
-<a id="api-5"></a>
+<a id="api-7"></a>
 
 ## `bam::Reader`
 
-[source](bam.goose#L126-L139)
+[source](bam.goose#L170-L183)
 
 ```goose
 root struct Reader {
@@ -259,11 +316,11 @@ assert(reader.references.len == 2);
 assert(reader.header[..3] == "@HD");
 ```
 
-<a id="api-6"></a>
+<a id="api-8"></a>
 
 ## `bam::close`
 
-[source](bam.goose#L169-L174)
+[source](bam.goose#L213-L218)
 
 ```goose
 fn close(reader: Reader&)
@@ -279,11 +336,11 @@ reader.close();
 assert(reader.read() == bam::Status.Closed);
 ```
 
-<a id="api-7"></a>
+<a id="api-9"></a>
 
 ## `bam::open`
 
-[source](bam.goose#L189-L203)
+[source](bam.goose#L233-L247)
 
 ```goose
 fn open(reader: Reader&, path: const u8[:]) -> Status
@@ -303,11 +360,11 @@ let record = reader.record();
 assert(record.name() == "match");
 ```
 
-<a id="api-8"></a>
+<a id="api-10"></a>
 
 ## `bam::tell`
 
-[source](bam.goose#L215-L215)
+[source](bam.goose#L259-L259)
 
 ```goose
 fn tell(reader: const Reader&) -> u64
@@ -324,11 +381,11 @@ let start = reader.tell();
 assert(reader.read() == bam::Status.Record && reader.tell() > start);
 ```
 
-<a id="api-9"></a>
+<a id="api-11"></a>
 
 ## `bam::seek`
 
-[source](bam.goose#L232-L239)
+[source](bam.goose#L276-L283)
 
 ```goose
 fn seek(reader: Reader&, offset: u64) -> Status
@@ -350,11 +407,11 @@ let record = reader.record();
 assert(record.name() == "match");
 ```
 
-<a id="api-10"></a>
+<a id="api-12"></a>
 
 ## `bam::reference_id`
 
-[source](bam.goose#L283-L288)
+[source](bam.goose#L327-L332)
 
 ```goose
 fn reference_id(reader: const Reader&, name: const u8[:]) -> i32
@@ -370,11 +427,11 @@ assert(reader.reference_id("chrB") == 1);
 assert(reader.reference_id("absent") == -1);
 ```
 
-<a id="api-11"></a>
+<a id="api-13"></a>
 
 ## `bam::record`
 
-[source](bam.goose#L303-L308)
+[source](bam.goose#L347-L352)
 
 ```goose
 fn record(reader: const Reader&) -> Record
@@ -394,11 +451,11 @@ let second = reader.record();
 assert(second.name() == "reverse"); // first's bytes are no longer valid.
 ```
 
-<a id="api-12"></a>
+<a id="api-14"></a>
 
 ## `bam::read`
 
-[source](bam.goose#L324-L328)
+[source](bam.goose#L368-L372)
 
 ```goose
 fn read(reader: Reader&) -> Status
@@ -419,11 +476,38 @@ assert(count == 21 && status == bam::Status.End);
 assert(reader.read() == bam::Status.End);
 ```
 
-<a id="api-13"></a>
+<a id="api-15"></a>
+
+## `bam::records`
+
+[source](bam.goose#L390-L398)
+
+```goose
+fn records<F: fn(const Record&)>(reader: Reader&) -> Status
+```
+
+Visit remaining records from the current position without copying them.
+Each view expires on the next reader operation; do not reposition or close
+the reader inside the callback. Returns Record on clean completion (even
+when already at EOF), otherwise the read failure. Earlier callbacks are not
+rolled back on failure. reader.status remains End after normal completion.
+An inline callback can return from its enclosing function to stop early.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+var count = 0;
+let status = reader.records() { record => count += 1; };
+status.check(bam::Status.Record);
+assert(count == 21 && reader.status == bam::Status.End);
+```
+
+<a id="api-16"></a>
 
 ## `bam::name`
 
-[source](bam.goose#L510-L510)
+[source](bam.goose#L580-L580)
 
 ```goose
 fn name(record: const Record&) -> const u8[:]
@@ -440,11 +524,11 @@ let record = reader.record();
 assert(record.name() == "match");
 ```
 
-<a id="api-14"></a>
+<a id="api-17"></a>
 
 ## `bam::cigar`
 
-[source](bam.goose#L523-L526)
+[source](bam.goose#L593-L596)
 
 ```goose
 fn cigar(record: const Record&, index: i64) -> u32
@@ -462,11 +546,11 @@ let record = reader.record();
 assert(record.cigar(0) == 13 << 4); // 13M
 ```
 
-<a id="api-15"></a>
+<a id="api-18"></a>
 
 ## `bam::base`
 
-[source](bam.goose#L540-L545)
+[source](bam.goose#L610-L615)
 
 ```goose
 fn base(record: const Record&, index: i64) -> u8
@@ -485,11 +569,11 @@ let record = reader.record();
 assert(record.base(0) == 'A' && record.base(1) == 'C');
 ```
 
-<a id="api-16"></a>
+<a id="api-19"></a>
 
 ## `bam::quality`
 
-[source](bam.goose#L558-L561)
+[source](bam.goose#L628-L631)
 
 ```goose
 fn quality(record: const Record&, index: i64) -> u8
@@ -507,11 +591,11 @@ let record = reader.record();
 assert(record.quality(0) == 13 && record.quality(1) == 20);
 ```
 
-<a id="api-17"></a>
+<a id="api-20"></a>
 
 ## `bam::aux`
 
-[source](bam.goose#L573-L573)
+[source](bam.goose#L643-L643)
 
 ```goose
 fn aux(record: const Record&) -> const u8[:]
@@ -528,11 +612,11 @@ let record = reader.record();
 assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 ```
 
-<a id="api-18"></a>
+<a id="api-21"></a>
 
 ## `bam_index::Chunk`
 
-[source](bam_index.goose#L23-L26)
+[source](bam_index.goose#L24-L27)
 
 ```goose
 struct Chunk {
@@ -556,11 +640,11 @@ let chunk = bam_index::Chunk { begin: 100, end: 200 };
 assert(chunk.begin < chunk.end);
 ```
 
-<a id="api-19"></a>
+<a id="api-22"></a>
 
 ## `bam_index::Index`
 
-[source](bam_index.goose#L57-L67)
+[source](bam_index.goose#L58-L68)
 
 ```goose
 root struct Index {
@@ -592,11 +676,11 @@ assert(index.open("tests/data/example.bam.bai") == bam::Status.Record);
 assert(index.references.len == 2);
 ```
 
-<a id="api-20"></a>
+<a id="api-23"></a>
 
 ## `bam_index::open`
 
-[source](bam_index.goose#L108-L115)
+[source](bam_index.goose#L109-L116)
 
 ```goose
 fn open(index: Index&, path: const u8[:]) -> bam::Status
@@ -613,11 +697,33 @@ assert(index.open("") == bam::Status.IoError);
 assert(index.references.len == 0);
 ```
 
-<a id="api-21"></a>
+<a id="api-24"></a>
+
+## `bam_index::open_for`
+
+[source](bam_index.goose#L129-L141)
+
+```goose
+fn open_for(index: Index&, bam_path: const u8[:]) -> bam::Status
+```
+
+Discover an adjacent index without opening the BAM. Try path + ".csi",
+then replace a trailing ".bam" with ".csi", then the same two BAI names.
+The first existing file wins; parsing or reading errors do not fall back.
+No index is created. Missing indexes return IoError and clear old data.
+Use open(index_path) to select an explicit index instead.
+
+```goose
+let index = bam_index::Index { .. };
+index.open_for("tests/data/example.bam").check(bam::Status.Record);
+assert(index.references.len == 2);
+```
+
+<a id="api-25"></a>
 
 ## `bam_index::query`
 
-[source](bam_index.goose#L239-L288)
+[source](bam_index.goose#L265-L314)
 
 ```goose
 fn query(index: const Index&, tid: i32, begin: i64, end: i64, output: Chunk[>..]&) -> bam::Status
@@ -646,7 +752,71 @@ assert(index.query(0, 5, 7, chunks) == bam::Status.Record && chunks.len > 0);
 assert(index.query(0, 7, 7, chunks) == bam::Status.Record && chunks.len == 0);
 ```
 
-<a id="api-22"></a>
+<a id="api-26"></a>
+
+## `bam_index::fetch`
+
+[source](bam_index.goose#L342-L377)
+
+```goose
+fn fetch<F: fn(const bam::Record&)>(index: const Index&, reader: bam::Reader&,
+        tid: i32, begin: i64, end: i64) -> bam::Status
+```
+
+Select and visit alignments overlapping [begin, end) on reference tid.
+Coordinates are zero-based and half-open. Reuses the open reader and index,
+including for backward queries or after EOF. Requires coordinate-sorted BAM
+and a matching index. Sorting is checked only in the visited records.
+Returns Record on completion, including empty results; failures may follow
+earlier callbacks and do not undo their effects. Every visited record is
+fully decoded and validated. Unlike pileup, no flag/MAPQ filters are applied:
+positioned unmapped and zero-span records use BAM's minimum span of one.
+Each record borrows reader storage until the next reader operation. Do not
+read, seek, close or fetch on that reader inside the callback. An inline
+return exits the enclosing function and permits stopping early.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+let index = bam_index::Index { .. };
+index.open_for("tests/data/example.bam").check(bam::Status.Record);
+var count = 0;
+let status = index.fetch(reader, 0 as i32, 5, 7) { record =>
+    assert(record.name() == "match");
+    count += 1;
+};
+status.check(bam::Status.Record);
+assert(count == 1);
+```
+
+<a id="api-27"></a>
+
+## `bam_index::fetch`
+
+[source](bam_index.goose#L393-L396)
+
+```goose
+fn fetch<F: fn(const bam::Record&)>(index: const Index&, reader: bam::Reader&,
+        name: const u8[:], begin: i64, end: i64) -> bam::Status
+```
+
+Fetch by reference name instead of ID. Unknown names return Invalid without
+invoking the callback. All other behavior is the same as the tid overload.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+let index = bam_index::Index { .. };
+index.open_for("tests/data/example.bam").check(bam::Status.Record);
+let status = index.fetch(reader, "chrA", 5, 7) { record =>
+    assert(record.name() == "match");
+};
+status.check(bam::Status.Record);
+```
+
+<a id="api-28"></a>
 
 ## `pileup::Filter`
 
@@ -678,7 +848,7 @@ let filter = pileup::Filter { min_mapq: 20, .. };
 assert(filter.exclude_flags == 0x704 && filter.min_mapq == 20);
 ```
 
-<a id="api-23"></a>
+<a id="api-29"></a>
 
 ## `pileup::SlimRecord`
 
@@ -727,7 +897,7 @@ assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
 assert(store.records[0].pos == 5 && store.records[0].seq_len == 13);
 ```
 
-<a id="api-24"></a>
+<a id="api-30"></a>
 
 ## `pileup::Store`
 
@@ -779,7 +949,7 @@ let record = store.record(0);
 assert(record.name() == "match");
 ```
 
-<a id="api-25"></a>
+<a id="api-31"></a>
 
 ## `pileup::Record`
 
@@ -811,7 +981,7 @@ let record = store.record(0);
 assert(record.fields.seq_len == record.bases.len);
 ```
 
-<a id="api-26"></a>
+<a id="api-32"></a>
 
 ## `pileup::record`
 
@@ -836,7 +1006,7 @@ let record = store.record(0);
 assert(record.base(1) == 'C');
 ```
 
-<a id="api-27"></a>
+<a id="api-33"></a>
 
 ## `pileup::name`
 
@@ -858,7 +1028,7 @@ let record = store.record(0);
 assert(record.name() == "match");
 ```
 
-<a id="api-28"></a>
+<a id="api-34"></a>
 
 ## `pileup::cigar`
 
@@ -880,7 +1050,7 @@ let record = store.record(0);
 assert(record.cigar(0) == 13 << 4);
 ```
 
-<a id="api-29"></a>
+<a id="api-35"></a>
 
 ## `pileup::base`
 
@@ -903,7 +1073,7 @@ let record = store.record(0);
 assert(record.base(1) == 'C');
 ```
 
-<a id="api-30"></a>
+<a id="api-36"></a>
 
 ## `pileup::quality`
 
@@ -925,7 +1095,7 @@ let record = store.record(0);
 assert(record.quality(1) == 20);
 ```
 
-<a id="api-31"></a>
+<a id="api-37"></a>
 
 ## `pileup::aux`
 
@@ -947,7 +1117,7 @@ let record = store.record(0);
 assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 ```
 
-<a id="api-32"></a>
+<a id="api-38"></a>
 
 ## `pileup::MateLinkStats`
 
@@ -968,7 +1138,7 @@ let stats = store.link_mates();
 assert(stats.pairs == 0 && stats.ambiguous_qnames == 0);
 ```
 
-<a id="api-33"></a>
+<a id="api-39"></a>
 
 ## `pileup::link_mates`
 
@@ -994,7 +1164,7 @@ assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
 assert(store.link_mates().pairs == 0 && store.records[0].mate_index == -1);
 ```
 
-<a id="api-34"></a>
+<a id="api-40"></a>
 
 ## `pileup::load`
 
@@ -1024,7 +1194,7 @@ assert(store.load(reader, 0, 9, 8) == bam::Status.Invalid);
 assert(store.records.len == 0 && store.bases.len == 0);
 ```
 
-<a id="api-35"></a>
+<a id="api-41"></a>
 
 ## `pileup::load_indexed`
 
@@ -1068,11 +1238,126 @@ store.columns() { pos, entries =>
 };
 ```
 
-<a id="api-36"></a>
+<a id="api-42"></a>
+
+## `pileup::pileup`
+
+[source](pileup.goose#L415-L421)
+
+```goose
+fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
+        index: const bam_index::Index&, tid: i32, begin: i64, end: i64,
+        filter: Filter = Filter { .. }) -> bam::Status
+```
+
+Load an indexed region and visit its covered positions. The callback gets
+a zero-based position and entries borrowed for that call; store.record()
+accesses contributing reads. Uses load_indexed's filters, mate linking and
+storage options. A failed load clears the store and invokes no callbacks.
+Returns Record on success, including empty regions. Do not reload or mutate
+the store inside the callback. Repeated queries reuse its storage.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+let index = bam_index::Index { .. };
+index.open_for("tests/data/example.bam").check(bam::Status.Record);
+let store = pileup::Store { .. };
+var count = 0;
+let status = store.pileup(reader, index, 0 as i32, 5, 7) { pos, entries =>
+    assert(pos == 5 + count && entries.len == 1);
+    let record = store.record(entries[0].record_index);
+    assert(record.name() == "match");
+    count += 1;
+};
+status.check(bam::Status.Record);
+assert(count == 2);
+```
+
+<a id="api-43"></a>
+
+## `pileup::pileup`
+
+[source](pileup.goose#L438-L442)
+
+```goose
+fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
+        index: const bam_index::Index&, name: const u8[:], begin: i64, end: i64,
+        filter: Filter = Filter { .. }) -> bam::Status
+```
+
+Indexed pileup by reference name. An unknown name returns Invalid and clears
+the store without invoking the callback; otherwise identical to the tid form.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+let index = bam_index::Index { .. };
+index.open_for("tests/data/example.bam").check(bam::Status.Record);
+let store = pileup::Store { .. };
+let status = store.pileup(reader, index, "chrA", 5, 7) { pos, entries =>
+    assert(entries.len == 1);
+};
+status.check(bam::Status.Record);
+```
+
+<a id="api-44"></a>
+
+## `pileup::pileup`
+
+[source](pileup.goose#L458-L463)
+
+```goose
+fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
+        tid: i32, begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status
+```
+
+Sequential pileup without an index. Uses load's sorted-input contract and
+scans forward from the current position; reopen before an independent query.
+Like the indexed form, callbacks run only after a successful complete load.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+let store = pileup::Store { .. };
+let status = store.pileup(reader, 0 as i32, 5, 7) { pos, entries =>
+    assert(entries.len == 1);
+};
+status.check(bam::Status.Record);
+```
+
+<a id="api-45"></a>
+
+## `pileup::pileup`
+
+[source](pileup.goose#L477-L480)
+
+```goose
+fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
+        name: const u8[:], begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status
+```
+
+Sequential pileup by reference name, with the same behavior as the tid form.
+
+```goose
+let reader = bam::Reader { .. };
+defer reader.close();
+reader.open("tests/data/example.bam").check(bam::Status.Record);
+let store = pileup::Store { .. };
+let status = store.pileup(reader, "chrA", 5, 7) { pos, entries =>
+    assert(entries.len == 1);
+};
+status.check(bam::Status.Record);
+```
+
+<a id="api-46"></a>
 
 ## `pileup::Op`
 
-[source](pileup.goose#L509-L509)
+[source](pileup.goose#L600-L600)
 
 ```goose
 enum Op { Base, Deletion, RefSkip }
@@ -1085,11 +1370,11 @@ distinct entries with no query base; both count in raw depth.
 assert(pileup::Op.Deletion != pileup::Op.RefSkip);
 ```
 
-<a id="api-37"></a>
+<a id="api-47"></a>
 
 ## `pileup::Entry`
 
-[source](pileup.goose#L529-L532)
+[source](pileup.goose#L620-L623)
 
 ```goose
 struct Entry {
@@ -1117,11 +1402,11 @@ store.columns() { pos, entries =>
 };
 ```
 
-<a id="api-38"></a>
+<a id="api-48"></a>
 
 ## `pileup::columns`
 
-[source](pileup.goose#L613-L660)
+[source](pileup.goose#L704-L751)
 
 ```goose
 fn columns<F: fn(i64, const Entry[:])>(store: const Store&)
@@ -1148,7 +1433,7 @@ store.columns() { pos, entries =>
 assert(count == 2);
 ```
 
-<a id="api-39"></a>
+<a id="api-49"></a>
 
 ## `bam_encode::Alignment`
 
@@ -1178,7 +1463,7 @@ assert(bam_encode::encode(alignment, bytes, 1) == bam::Status.Record);
 assert(bytes.len > 32);
 ```
 
-<a id="api-40"></a>
+<a id="api-50"></a>
 
 ## `bam_encode::encode`
 
@@ -1203,7 +1488,7 @@ let fields, ok = bam::decode(bytes, 0);
 assert(ok && fields.seq_len == 3 && fields.flags == 4);
 ```
 
-<a id="api-41"></a>
+<a id="api-51"></a>
 
 ## `bam_writer::Writer`
 
@@ -1229,7 +1514,7 @@ let writer = bam_writer::Writer { .. };
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-42"></a>
+<a id="api-52"></a>
 
 ## `bam_writer::close`
 
@@ -1249,7 +1534,7 @@ assert(writer.close() == bam::Status.Record);
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-43"></a>
+<a id="api-53"></a>
 
 ## `bam_writer::open`
 
@@ -1272,7 +1557,7 @@ assert(writer.open("", "", refs, "") == bam::Status.IoError);
 assert(writer.close() == bam::Status.IoError);
 ```
 
-<a id="api-44"></a>
+<a id="api-54"></a>
 
 ## `bam_writer::write`
 
@@ -1296,7 +1581,7 @@ let record = reader.record();
 assert(writer.write(record) == bam::Status.Closed);
 ```
 
-<a id="api-45"></a>
+<a id="api-55"></a>
 
 ## `bam_writer::write`
 
@@ -1315,7 +1600,7 @@ let alignment = bam_encode::Alignment { flags: 4, .. };
 assert(writer.write(alignment) == bam::Status.Closed);
 ```
 
-<a id="api-46"></a>
+<a id="api-56"></a>
 
 ## `bam_writer::write`
 
@@ -1340,7 +1625,7 @@ let record = store.record(0);
 assert(writer.write(record) == bam::Status.Closed);
 ```
 
-<a id="api-47"></a>
+<a id="api-57"></a>
 
 ## `bam_writer::tell`
 
@@ -1358,7 +1643,7 @@ let writer = bam_writer::Writer { .. };
 assert(writer.tell() == 0);
 ```
 
-<a id="api-48"></a>
+<a id="api-58"></a>
 
 ## `sam::Reader`
 
@@ -1390,7 +1675,7 @@ assert(reader.read() == bam::Status.Closed);
 reader.close();
 ```
 
-<a id="api-49"></a>
+<a id="api-59"></a>
 
 ## `sam::close`
 
@@ -1408,7 +1693,7 @@ reader.close(); reader.close();
 assert(reader.status == bam::Status.Closed);
 ```
 
-<a id="api-50"></a>
+<a id="api-60"></a>
 
 ## `sam::open`
 
@@ -1440,7 +1725,7 @@ store.columns() { pos, entries => assert(entries.len == 1); columns += 1; };
 assert(columns == 2);
 ```
 
-<a id="api-51"></a>
+<a id="api-61"></a>
 
 ## `sam::reference_id`
 
@@ -1457,7 +1742,7 @@ let reader = sam::Reader { .. };
 assert(reader.reference_id("missing") == -1);
 ```
 
-<a id="api-52"></a>
+<a id="api-62"></a>
 
 ## `sam::read`
 
@@ -1476,7 +1761,7 @@ let reader = sam::Reader { .. };
 assert(reader.read() == bam::Status.Closed);
 ```
 
-<a id="api-53"></a>
+<a id="api-63"></a>
 
 ## `sam::record`
 
@@ -1494,7 +1779,7 @@ let reader = sam::Reader { .. };
 assert(reader.status == bam::Status.Closed); // No record is available yet.
 ```
 
-<a id="api-54"></a>
+<a id="api-64"></a>
 
 ## `cram::Reader`
 
@@ -1544,7 +1829,7 @@ assert(reader.status == bam::Status.Closed);
 assert(reader.max_container_bytes == 268435456);
 ```
 
-<a id="api-55"></a>
+<a id="api-65"></a>
 
 ## `cram::close`
 
@@ -1562,7 +1847,7 @@ reader.close(); reader.close();
 assert(reader.status == bam::Status.Closed);
 ```
 
-<a id="api-56"></a>
+<a id="api-66"></a>
 
 ## `cram::open`
 
@@ -1583,7 +1868,7 @@ defer reader.close();
 assert(reader.open("tests/data/example.bam") == bam::Status.Invalid);
 ```
 
-<a id="api-57"></a>
+<a id="api-67"></a>
 
 ## `cram::seek_slice`
 
@@ -1604,7 +1889,7 @@ let reader = cram::Reader { .. }; let source = ExampleReference { .. };
 assert(reader.seek_slice(0, 0, 0, source) == bam::Status.Closed);
 ```
 
-<a id="api-58"></a>
+<a id="api-68"></a>
 
 ## `cram::read`
 
@@ -1628,7 +1913,7 @@ let source = ExampleReference { .. };
 assert(reader.read(source) == bam::Status.Closed);
 ```
 
-<a id="api-59"></a>
+<a id="api-69"></a>
 
 ## `cram::record`
 
@@ -1646,7 +1931,7 @@ let reader = cram::Reader { .. };
 assert(reader.status == bam::Status.Closed); // Read before calling record().
 ```
 
-<a id="api-60"></a>
+<a id="api-70"></a>
 
 ## `cram::reference_id`
 
@@ -1663,7 +1948,7 @@ let reader = cram::Reader { .. };
 assert(reader.reference_id("missing") == -1);
 ```
 
-<a id="api-61"></a>
+<a id="api-71"></a>
 
 ## `cram::load`
 
@@ -1685,7 +1970,7 @@ let store = pileup::Store { .. };
 assert(cram::load(store, reader, source, 0, 0, 10) == bam::Status.Invalid);
 ```
 
-<a id="api-62"></a>
+<a id="api-72"></a>
 
 ## `cram_index::Index`
 
@@ -1705,7 +1990,7 @@ assert(index.status == bam::Status.Closed);
 assert(index.open("") == bam::Status.IoError);
 ```
 
-<a id="api-63"></a>
+<a id="api-73"></a>
 
 ## `cram_index::open`
 
@@ -1722,7 +2007,7 @@ let index = cram_index::Index { .. };
 assert(index.open("") == bam::Status.IoError && index.entries.len == 0);
 ```
 
-<a id="api-64"></a>
+<a id="api-74"></a>
 
 ## `cram_index::Cursor`
 
@@ -1746,7 +2031,7 @@ let cursor = cram_index::Cursor { .. };
 assert(cursor.status == bam::Status.Closed);
 ```
 
-<a id="api-65"></a>
+<a id="api-75"></a>
 
 ## `cram_index::fetch`
 
@@ -1766,7 +2051,7 @@ let reader = cram::Reader { .. };
 assert(cursor.fetch(index, reader, 0, 0, 1) == bam::Status.Closed);
 ```
 
-<a id="api-66"></a>
+<a id="api-76"></a>
 
 ## `cram_index::read`
 
@@ -1786,7 +2071,7 @@ let source = ExampleReference { .. };
 assert(cursor.read(reader, source) == bam::Status.Closed);
 ```
 
-<a id="api-67"></a>
+<a id="api-77"></a>
 
 ## `sam_writer::Writer`
 
@@ -1811,7 +2096,7 @@ let writer = sam_writer::Writer { .. };
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-68"></a>
+<a id="api-78"></a>
 
 ## `sam_writer::close`
 
@@ -1830,7 +2115,7 @@ assert(writer.close() == bam::Status.Record);
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-69"></a>
+<a id="api-79"></a>
 
 ## `sam_writer::open`
 
@@ -1860,7 +2145,7 @@ let decoded = input.record();
 assert(decoded.name() == "match");
 ```
 
-<a id="api-70"></a>
+<a id="api-80"></a>
 
 ## `sam_writer::write`
 
@@ -1881,7 +2166,7 @@ let alignment = bam_encode::Alignment { flags: 4, .. };
 assert(writer.write(alignment) == bam::Status.Closed);
 ```
 
-<a id="api-71"></a>
+<a id="api-81"></a>
 
 ## `sam_writer::write`
 
@@ -1900,7 +2185,7 @@ let alignment = bam_encode::Alignment { name: "r", flags: 4, sequence: "ACN", ..
 assert(writer.write(alignment) == bam::Status.Closed);
 ```
 
-<a id="api-72"></a>
+<a id="api-82"></a>
 
 ## `cram_writer::Writer`
 
@@ -1936,7 +2221,7 @@ let writer = cram_writer::Writer { .. };
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-73"></a>
+<a id="api-83"></a>
 
 ## `cram_writer::flush`
 
@@ -1954,7 +2239,7 @@ let writer = cram_writer::Writer { .. };
 assert(writer.flush() == bam::Status.Closed);
 ```
 
-<a id="api-74"></a>
+<a id="api-84"></a>
 
 ## `cram_writer::close`
 
@@ -1973,7 +2258,7 @@ assert(writer.close() == bam::Status.Record);
 assert(writer.close() == bam::Status.Record);
 ```
 
-<a id="api-75"></a>
+<a id="api-85"></a>
 
 ## `cram_writer::open`
 
@@ -2004,7 +2289,7 @@ let decoded = input.record();
 assert(decoded.name() == "match");
 ```
 
-<a id="api-76"></a>
+<a id="api-86"></a>
 
 ## `cram_writer::write`
 
@@ -2026,7 +2311,7 @@ let alignment = bam_encode::Alignment { flags: 4, .. };
 assert(writer.write(alignment) == bam::Status.Closed);
 ```
 
-<a id="api-77"></a>
+<a id="api-87"></a>
 
 ## `cram_writer::write`
 

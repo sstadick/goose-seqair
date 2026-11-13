@@ -2,6 +2,7 @@
 // genomic region. This module reads the index, not the BAM records themselves.
 namespace bam_index;
 import std;
+import os;
 import bam;
 import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import io from "github.com/sstadick/goose-io@v0.3.0";
@@ -111,6 +112,31 @@ fn open(index: Index&, path: const u8[:]) -> bam::Status {
     index.status = read_bytes(path, bytes, index.max_bytes);
     if index.status == bam::Status.Record { index.status = parse(index, bytes); }
     if index.status != bam::Status.Record { index.clear(); }
+    index.status
+}
+
+// Discover an adjacent index without opening the BAM. Try path + ".csi",
+// then replace a trailing ".bam" with ".csi", then the same two BAI names.
+// The first existing file wins; parsing or reading errors do not fall back.
+// No index is created. Missing indexes return IoError and clear old data.
+// Use open(index_path) to select an explicit index instead.
+//
+// ```goose
+// let index = bam_index::Index { .. };
+// index.open_for("tests/data/example.bam").check(bam::Status.Record);
+// assert(index.references.len == 2);
+// ```
+fn open_for(index: Index&, bam_path: const u8[:]) -> bam::Status {
+    for suffix in [".csi", ".bai"] {
+        let appended = str(bam_path, suffix);
+        if file_exists(appended) { return index.open(appended); }
+        if bam_path.len >= 4 && bam_path[bam_path.len - 4..] == ".bam" {
+            let replaced = str(bam_path[..bam_path.len - 4], suffix);
+            if file_exists(replaced) { return index.open(replaced); }
+        }
+    }
+    index.clear();
+    index.status = bam::Status.IoError;
     index.status
 }
 
@@ -285,4 +311,86 @@ fn query(index: const Index&, tid: i32, begin: i64, end: i64, output: Chunk[>..]
     }
     output.resize(kept);
     bam::Status.Record
+}
+
+// Select and visit alignments overlapping [begin, end) on reference tid.
+// Coordinates are zero-based and half-open. Reuses the open reader and index,
+// including for backward queries or after EOF. Requires coordinate-sorted BAM
+// and a matching index. Sorting is checked only in the visited records.
+// Returns Record on completion, including empty results; failures may follow
+// earlier callbacks and do not undo their effects. Every visited record is
+// fully decoded and validated. Unlike pileup, no flag/MAPQ filters are applied:
+// positioned unmapped and zero-span records use BAM's minimum span of one.
+// Each record borrows reader storage until the next reader operation. Do not
+// read, seek, close or fetch on that reader inside the callback. An inline
+// return exits the enclosing function and permits stopping early.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// let index = bam_index::Index { .. };
+// index.open_for("tests/data/example.bam").check(bam::Status.Record);
+// var count = 0;
+// let status = index.fetch(reader, 0 as i32, 5, 7) { record =>
+//     assert(record.name() == "match");
+//     count += 1;
+// };
+// status.check(bam::Status.Record);
+// assert(count == 1);
+// ```
+fn fetch<F: fn(const bam::Record&)>(index: const Index&, reader: bam::Reader&,
+        tid: i32, begin: i64, end: i64) -> bam::Status {
+    if reader.stream.input.fd < 0 { return bam::Status.Closed; }
+    if index.status != bam::Status.Record { return index.status; }
+    if index.references.len != reader.references.len || tid < 0 || tid >= reader.references.len ||
+       begin < 0 || end < begin || end > reader.references[tid as i64].length {
+        return bam::Status.Invalid;
+    }
+    var chunks: Chunk[>..] = [];
+    let status = index.query(tid, begin, end, chunks);
+    if status != bam::Status.Record { return status; }
+    var last_tid: i32 = -1;
+    var last_pos: i64 = -1;
+    for chunk, i in chunks {
+        if i == 0 || reader.tell() < chunk.begin {
+            let status = reader.seek(chunk.begin);
+            if status != bam::Status.Record {
+                return if status == bam::Status.End { bam::Status.Truncated } else { status };
+            }
+        }
+        while reader.tell() < chunk.end {
+            let status = reader.read();
+            if status != bam::Status.Record {
+                return if status == bam::Status.End { bam::Status.Truncated } else { status };
+            }
+            let record = reader.record();
+            let f = record.fields;
+            if f.tid < 0 || f.pos < 0 { continue; }
+            if f.tid < last_tid || (f.tid == last_tid && f.pos < last_pos) { return bam::Status.Unsorted; }
+            last_tid = f.tid; last_pos = f.pos;
+            if f.tid > tid || (f.tid == tid && f.pos >= end) { return bam::Status.Record; }
+            if f.tid == tid && f.end > begin { F(record); }
+        }
+    }
+    bam::Status.Record
+}
+
+// Fetch by reference name instead of ID. Unknown names return Invalid without
+// invoking the callback. All other behavior is the same as the tid overload.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// let index = bam_index::Index { .. };
+// index.open_for("tests/data/example.bam").check(bam::Status.Record);
+// let status = index.fetch(reader, "chrA", 5, 7) { record =>
+//     assert(record.name() == "match");
+// };
+// status.check(bam::Status.Record);
+// ```
+fn fetch<F: fn(const bam::Record&)>(index: const Index&, reader: bam::Reader&,
+        name: const u8[:], begin: i64, end: i64) -> bam::Status {
+    index.fetch(reader, reader.reference_id(name), begin, end, F)
 }

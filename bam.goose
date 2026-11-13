@@ -29,6 +29,50 @@ enum Status {
     Unsorted,
 }
 
+fn status_name(status: Status) -> const u8[:] {
+    match status {
+        Record => "Record", End => "End", Invalid => "Invalid", Truncated => "Truncated",
+        IoError => "IoError", Closed => "Closed", TooLarge => "TooLarge", Unsorted => "Unsorted",
+    }
+}
+
+// Require an explicit expected status, returning the actual status on a match.
+// A mismatch aborts with the expected and actual names and optional context.
+// Abort is not catchable and does not run deferred cleanup. For recovery, use
+// the callback overload or inspect the status directly. End is not Record.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record, "opening BAM");
+// reader.read().check(bam::Status.Record);
+// ```
+fn check(actual: Status, expected: Status, message: const u8[:] = "BAM status mismatch") -> Status {
+    if actual != expected {
+        abort(str(message, ": expected ", status_name(expected), ", got ", status_name(actual)));
+    }
+    actual
+}
+
+// Invoke the handler only on a mismatch. If it falls through, return the
+// original status unchanged; there is no automatic abort. A return inside an
+// inline block exits its enclosing named function and runs deferred cleanup.
+// A named handler returns normally to check instead.
+//
+// ```goose
+// var called = false;
+// let status = bam::Status.Closed.check(bam::Status.Record) { actual =>
+//     assert(actual == bam::Status.Closed);
+//     called = true;
+// };
+// assert(called && status == bam::Status.Closed);
+// bam::Status.End.check(bam::Status.End) { actual => assert(false); };
+// ```
+fn check<F: fn(Status)>(actual: Status, expected: Status) -> Status {
+    if actual != expected { F(actual); }
+    actual
+}
+
 // One reference sequence from the BAM header. Its position in
 // reader.references is its reference ID, also called tid.
 // name is a byte offset into reader.names, not the reference ID or a string.
@@ -325,6 +369,32 @@ fn read(reader: Reader&) -> Status {
     let status = reader.read_payload();
     if status != Status.Record { return status; }
     reader.decode_record()
+}
+
+// Visit remaining records from the current position without copying them.
+// Each view expires on the next reader operation; do not reposition or close
+// the reader inside the callback. Returns Record on clean completion (even
+// when already at EOF), otherwise the read failure. Earlier callbacks are not
+// rolled back on failure. reader.status remains End after normal completion.
+// An inline callback can return from its enclosing function to stop early.
+//
+// ```goose
+// let reader = bam::Reader { .. };
+// defer reader.close();
+// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// var count = 0;
+// let status = reader.records() { record => count += 1; };
+// status.check(bam::Status.Record);
+// assert(count == 21 && reader.status == bam::Status.End);
+// ```
+fn records<F: fn(const Record&)>(reader: Reader&) -> Status {
+    loop {
+        let status = reader.read();
+        if status == Status.End { return Status.Record; }
+        if status != Status.Record { return status; }
+        let record = reader.record();
+        F(record);
+    }
 }
 
 // Internal framing step for indexed filtering. fields is not valid until
