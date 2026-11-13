@@ -25,7 +25,7 @@ fn main() {
         var bases: i64 = 0;
         for iteration in iterations + 1 {
             let start = clock_ns();
-            assert(reader.open(args[2]) == bam::Status.Record);
+            assert(reader.open(args[2]) == bam::Status.Ok);
             records = 0; bases = 0;
             while reader.read() == bam::Status.Record {
                 records += 1; bases += reader.record().fields.seq_len;
@@ -57,7 +57,7 @@ fn main() {
     // Iteration zero warms the filesystem cache and reusable buffers.
     for iteration in iterations + 1 {
         let start = clock_ns();
-        assert(reader.open(args[1]) == bam::Status.Record);
+        assert(reader.open(args[1]) == bam::Status.Ok);
         var records: i64 = 0;
         var sum:     i64 = 0;
         var status = reader.read();
@@ -69,13 +69,13 @@ fn main() {
         }
         assert(status == bam::Status.End);
         let read_end = clock_ns();
-        assert(reader.open(args[1]) == bam::Status.Record);
+        assert(reader.open(args[1]) == bam::Status.Ok);
         if args.len == 7 {
             // Charge index parsing to load, matching Seqair's indexed adapter.
-            assert(index.open(args[6]) == bam::Status.Record);
-            assert(store.load_indexed(reader, index, reader.reference_id(args[2]), begin, end) == bam::Status.Record);
+            assert(index.open(args[6]) == bam::Status.Ok);
+            assert(store.load_indexed(reader, index, reader.reference_id(args[2]), begin, end) == bam::Status.Ok);
         } else {
-            assert(store.load(reader, reader.reference_id(args[2]), begin, end) == bam::Status.Record);
+            assert(store.load(reader, reader.reference_id(args[2]), begin, end) == bam::Status.Ok);
         }
         let load_end = clock_ns();
         var entries_count: i64 = 0;
@@ -105,9 +105,9 @@ fn main() {
 fn emit<W>(writer: W&, fields: const bam::Fields[:], payloads: const u8[:], offsets: const i64[:]) {
     for f, i in fields {
         let record = bam::Record { fields: f, bytes: payloads[offsets[i]..offsets[i + 1]] };
-        assert(writer.write(record) == bam::Status.Record);
+        assert(writer.write(record) == bam::Status.Ok);
     }
-    assert(writer.close() == bam::Status.Record);
+    assert(writer.close() == bam::Status.Ok);
 }
 
 fn write_benchmark(input: const u8[:], output: const u8[:], level_arg: const u8[:], count_arg: const u8[:], mode: const u8[:]) {
@@ -116,7 +116,7 @@ fn write_benchmark(input: const u8[:], output: const u8[:], level_arg: const u8[
     assert(l && n && iterations > 0);
     let reader = bam::Reader { .. };
     defer reader.close();
-    assert(reader.open(input) == bam::Status.Record);
+    assert(reader.open(input) == bam::Status.Ok);
     var payloads: u8[>..] = [];
     var offsets: i64[>..] = [0];
     var fields: bam::Fields[>..] = [];
@@ -132,15 +132,15 @@ fn write_benchmark(input: const u8[:], output: const u8[:], level_arg: const u8[
         let start = clock_ns();
         if mode == "write-sam" {
             let writer = sam_writer::Writer { .. };
-            assert(writer.open(output, reader.header, reader.references, reader.names) == bam::Status.Record);
+            assert(writer.open(output, reader.header, reader.references, reader.names) == bam::Status.Ok);
             emit(writer, fields, payloads, offsets);
         } else if mode == "write-cram" {
             let writer = cram_writer::Writer { .. };
-            assert(writer.open(output, reader.header, reader.references, reader.names, level as i32) == bam::Status.Record);
+            assert(writer.open(output, reader.header, reader.references, reader.names, level as i32) == bam::Status.Ok);
             emit(writer, fields, payloads, offsets);
         } else {
             let writer = bam_writer::Writer { .. };
-            assert(writer.open(output, reader.header, reader.references, reader.names, level as i32) == bam::Status.Record);
+            assert(writer.open(output, reader.header, reader.references, reader.names, level as i32) == bam::Status.Ok);
             emit(writer, fields, payloads, offsets);
         }
         if iteration > 0 { elapsed += clock_ns() - start; }

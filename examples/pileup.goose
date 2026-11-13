@@ -18,7 +18,7 @@ fn main() {
     assert(start_ok && end_ok);
     let reader = bam::Reader { .. };
     defer reader.close();
-    reader.open(args[1]).check(bam::Status.Record, "opening BAM");
+    reader.open(args[1]).check(bam::Status.Ok, "opening BAM");
     let store = pileup::Store { .. };
     var line: u8[>..] = [];
     fn column(pos: i64, entries: const pileup::Entry[:]) {
@@ -29,10 +29,10 @@ fn main() {
     }
     if args.len == 6 {
         let index = bam_index::Index { .. };
-        index.open(args[5]).check(bam::Status.Record, "opening BAM index");
-        store.pileup(reader, index, args[2], begin, end, column).check(bam::Status.Record, "loading pileup");
+        index.open(args[5]).check(bam::Status.Ok, "opening BAM index");
+        store.pileup(reader, index, args[2], begin, end, column).check(bam::Status.Ok, "loading pileup");
     } else {
-        store.pileup(reader, args[2], begin, end, column).check(bam::Status.Record, "loading pileup");
+        store.pileup(reader, args[2], begin, end, column).check(bam::Status.Ok, "loading pileup");
     }
     if store.mate_stats.ambiguous_qnames != 0 { abort("ambiguous template names in region"); }
 }

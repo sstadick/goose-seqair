@@ -16,7 +16,7 @@ fn main() {
     }
     let reader = bam::Reader { .. };
     defer reader.close();
-    reader.open(args[1]).check(bam::Status.Record, "opening BAM");
+    reader.open(args[1]).check(bam::Status.Ok, "opening BAM");
     var line: u8[>..] = [];
     fn emit(record: const bam::Record&) {
         line.clear();
@@ -25,13 +25,13 @@ fn main() {
         write_stdout(line);
     }
     if args.len == 2 {
-        reader.records(emit).check(bam::Status.Record, "reading BAM");
+        reader.records(emit).check(bam::Status.Ok, "reading BAM");
     } else {
         let begin, b = parse_int(args[3]); let end, e = parse_int(args[4]);
         if !b || !e { abort("invalid region coordinates"); }
         let index = bam_index::Index { .. };
         let opened = if args.len == 6 { index.open(args[5]) } else { index.open_for(args[1]) };
-        opened.check(bam::Status.Record, "opening BAM index");
-        index.fetch(reader, args[2], begin, end, emit).check(bam::Status.Record, "fetching BAM region");
+        opened.check(bam::Status.Ok, "opening BAM index");
+        index.fetch(reader, args[2], begin, end, emit).check(bam::Status.Ok, "fetching BAM region");
     }
 }

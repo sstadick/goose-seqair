@@ -94,7 +94,7 @@
 
 ## `bam::Status`
 
-[source](bam.goose#L21-L30)
+[source](bam.goose#L23-L33)
 
 ```goose
 enum Status {
@@ -106,12 +106,15 @@ enum Status {
     Closed,
     TooLarge,
     Unsorted,
+    Ok,
 }
 ```
 
-Result of a BAM operation. read() returns Record when an alignment is ready
-and End at normal end-of-file. open() and seek() also return Record on success,
-but you must call read() before accessing an alignment after either operation.
+Result shared by BAM, SAM, CRAM, indexes, writers and pileup operations.
+Ok means an operation completed successfully, including an empty query.
+read() returns Record when an alignment is ready (including the last one),
+and End only when no next alignment exists. open() and seek() return Ok;
+call read() before accessing an alignment after either operation.
 
 Other values report failures. TooLarge means a configured size limit was
 exceeded. Unsorted is reported by region-loading code when mapped records
@@ -128,7 +131,7 @@ assert(reader.read() == bam::Status.Closed);
 
 ## `bam::check`
 
-[source](bam.goose#L50-L55)
+[source](bam.goose#L54-L59)
 
 ```goose
 fn check(actual: Status, expected: Status, message: const u8[:] = "BAM status mismatch") -> Status
@@ -142,7 +145,7 @@ the callback overload or inspect the status directly. End is not Record.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record, "opening BAM");
+reader.open("tests/data/example.bam").check(bam::Status.Ok, "opening BAM");
 reader.read().check(bam::Status.Record);
 ```
 
@@ -150,7 +153,7 @@ reader.read().check(bam::Status.Record);
 
 ## `bam::check`
 
-[source](bam.goose#L71-L74)
+[source](bam.goose#L75-L78)
 
 ```goose
 fn check<F: fn(Status)>(actual: Status, expected: Status) -> Status
@@ -163,7 +166,7 @@ A named handler returns normally to check instead.
 
 ```goose
 var called = false;
-let status = bam::Status.Closed.check(bam::Status.Record) { actual =>
+let status = bam::Status.Closed.check(bam::Status.Ok) { actual =>
     assert(actual == bam::Status.Closed);
     called = true;
 };
@@ -175,7 +178,7 @@ bam::Status.End.check(bam::Status.End) { actual => assert(false); };
 
 ## `bam::Reference`
 
-[source](bam.goose#L89-L93)
+[source](bam.goose#L93-L97)
 
 ```goose
 struct Reference {
@@ -193,7 +196,7 @@ name_len is the name's byte length; length is the reference length in bases.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let ref = reader.references[0];
 assert(reader.names[ref.name..ref.name + ref.name_len] == "chrA");
 assert(ref.length == 200000);
@@ -203,7 +206,7 @@ assert(ref.length == 200000);
 
 ## `bam::Fields`
 
-[source](bam.goose#L116-L133)
+[source](bam.goose#L120-L137)
 
 ```goose
 struct Fields {
@@ -241,7 +244,7 @@ interpreting the packed data yourself. Do not construct this metadata by hand.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let f = reader.record().fields;
 assert(f.pos == 5 && f.end == 18 && f.reference_len == 13);
@@ -252,7 +255,7 @@ assert(f.seq_len == 13 && f.mate_tid == -1);
 
 ## `bam::Record`
 
-[source](bam.goose#L147-L150)
+[source](bam.goose#L151-L154)
 
 ```goose
 struct Record {
@@ -268,7 +271,7 @@ close(), any of which invalidates its bytes. Copy any data you need to keep.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.name() == "match" && record.fields.tid == 0);
@@ -278,7 +281,7 @@ assert(record.name() == "match" && record.fields.tid == 0);
 
 ## `bam::Reader`
 
-[source](bam.goose#L170-L183)
+[source](bam.goose#L174-L187)
 
 ```goose
 root struct Reader {
@@ -311,7 +314,7 @@ raised before opening. Otherwise treat implementation fields as read-only.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.references.len == 2);
 assert(reader.header[..3] == "@HD");
 ```
@@ -320,7 +323,7 @@ assert(reader.header[..3] == "@HD");
 
 ## `bam::close`
 
-[source](bam.goose#L213-L218)
+[source](bam.goose#L217-L222)
 
 ```goose
 fn close(reader: Reader&)
@@ -330,7 +333,7 @@ Close the file and decompressor. Header storage remains readable until open.
 
 ```goose
 let reader = bam::Reader { .. };
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 reader.close();
 reader.close();
 assert(reader.read() == bam::Status.Closed);
@@ -340,21 +343,21 @@ assert(reader.read() == bam::Status.Closed);
 
 ## `bam::open`
 
-[source](bam.goose#L233-L247)
+[source](bam.goose#L237-L251)
 
 ```goose
 fn open(reader: Reader&, path: const u8[:]) -> Status
 ```
 
-Open and read the BAM header. Record means ready to read the first alignment;
+Open and read the BAM header. Ok means ready to read the first alignment;
 it does not mean an alignment is already available. Failure closes the file.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.name() == "match");
@@ -364,7 +367,7 @@ assert(record.name() == "match");
 
 ## `bam::tell`
 
-[source](bam.goose#L259-L259)
+[source](bam.goose#L263-L263)
 
 ```goose
 fn tell(reader: const Reader&) -> u64
@@ -376,7 +379,7 @@ The low 16 bits are the uncompressed position inside a compressed BGZF block.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let start = reader.tell();
 assert(reader.read() == bam::Status.Record && reader.tell() > start);
 ```
@@ -385,7 +388,7 @@ assert(reader.read() == bam::Status.Record && reader.tell() > start);
 
 ## `bam::seek`
 
-[source](bam.goose#L276-L283)
+[source](bam.goose#L281-L288)
 
 ```goose
 fn seek(reader: Reader&, offset: u64) -> Status
@@ -394,14 +397,15 @@ fn seek(reader: Reader&, offset: u64) -> Status
 Seek to an alignment boundary obtained from tell or a matching BAM index.
 Invalidates record views and resets EOF/errors, retaining the header. An
 arbitrary byte offset is not an alignment boundary and may fail on read.
+Returns Ok when positioned; call read() to obtain a validated alignment.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let start = reader.tell();
 assert(reader.read() == bam::Status.Record);
-assert(reader.seek(start) == bam::Status.Record);
+assert(reader.seek(start) == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.name() == "match");
@@ -411,7 +415,7 @@ assert(record.name() == "match");
 
 ## `bam::reference_id`
 
-[source](bam.goose#L327-L332)
+[source](bam.goose#L332-L337)
 
 ```goose
 fn reference_id(reader: const Reader&, name: const u8[:]) -> i32
@@ -422,7 +426,7 @@ Look up a reference by its byte name; -1 means absent.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.reference_id("chrB") == 1);
 assert(reader.reference_id("absent") == -1);
 ```
@@ -431,7 +435,7 @@ assert(reader.reference_id("absent") == -1);
 
 ## `bam::record`
 
-[source](bam.goose#L347-L352)
+[source](bam.goose#L352-L357)
 
 ```goose
 fn record(reader: const Reader&) -> Record
@@ -442,7 +446,7 @@ Borrow the last successfully read record. Call only after read returns Record.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let first = reader.record();
 assert(first.name() == "match");
@@ -455,7 +459,7 @@ assert(second.name() == "reverse"); // first's bytes are no longer valid.
 
 ## `bam::read`
 
-[source](bam.goose#L368-L372)
+[source](bam.goose#L374-L378)
 
 ```goose
 fn read(reader: Reader&) -> Status
@@ -464,11 +468,12 @@ fn read(reader: Reader&) -> Status
 Read one alignment, reusing bytes. Record bytes are invalidated even when a
 read fails. End and failures are sticky until open/seek. Records can span
 many BGZF blocks.
+Returns Record for a validated alignment, End when exhausted, or a failure.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 var count = 0;
 var status = reader.read();
 while status == bam::Status.Record { count += 1; status = reader.read(); }
@@ -480,7 +485,7 @@ assert(reader.read() == bam::Status.End);
 
 ## `bam::records`
 
-[source](bam.goose#L390-L398)
+[source](bam.goose#L396-L404)
 
 ```goose
 fn records<F: fn(const Record&)>(reader: Reader&) -> Status
@@ -488,7 +493,7 @@ fn records<F: fn(const Record&)>(reader: Reader&) -> Status
 
 Visit remaining records from the current position without copying them.
 Each view expires on the next reader operation; do not reposition or close
-the reader inside the callback. Returns Record on clean completion (even
+the reader inside the callback. Returns Ok on clean completion (even
 when already at EOF), otherwise the read failure. Earlier callbacks are not
 rolled back on failure. reader.status remains End after normal completion.
 An inline callback can return from its enclosing function to stop early.
@@ -496,10 +501,10 @@ An inline callback can return from its enclosing function to stop early.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 var count = 0;
 let status = reader.records() { record => count += 1; };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 assert(count == 21 && reader.status == bam::Status.End);
 ```
 
@@ -507,7 +512,7 @@ assert(count == 21 && reader.status == bam::Status.End);
 
 ## `bam::name`
 
-[source](bam.goose#L580-L580)
+[source](bam.goose#L588-L588)
 
 ```goose
 fn name(record: const Record&) -> const u8[:]
@@ -518,7 +523,7 @@ Read name without its trailing NUL.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.name() == "match");
@@ -528,7 +533,7 @@ assert(record.name() == "match");
 
 ## `bam::cigar`
 
-[source](bam.goose#L593-L596)
+[source](bam.goose#L601-L604)
 
 ```goose
 fn cigar(record: const Record&, index: i64) -> u32
@@ -540,7 +545,7 @@ index must be in [0, fields.cigar_len). Long-CIGAR CG arrays are transparent.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.cigar(0) == 13 << 4); // 13M
@@ -550,7 +555,7 @@ assert(record.cigar(0) == 13 << 4); // 13M
 
 ## `bam::base`
 
-[source](bam.goose#L610-L615)
+[source](bam.goose#L618-L623)
 
 ```goose
 fn base(record: const Record&, index: i64) -> u8
@@ -563,7 +568,7 @@ index must be in [0, fields.seq_len).
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.base(0) == 'A' && record.base(1) == 'C');
@@ -573,7 +578,7 @@ assert(record.base(0) == 'A' && record.base(1) == 'C');
 
 ## `bam::quality`
 
-[source](bam.goose#L628-L631)
+[source](bam.goose#L636-L639)
 
 ```goose
 fn quality(record: const Record&, index: i64) -> u8
@@ -585,7 +590,7 @@ index must be in [0, fields.seq_len).
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.quality(0) == 13 && record.quality(1) == 20);
@@ -595,7 +600,7 @@ assert(record.quality(0) == 13 && record.quality(1) == 20);
 
 ## `bam::aux`
 
-[source](bam.goose#L643-L643)
+[source](bam.goose#L651-L651)
 
 ```goose
 fn aux(record: const Record&) -> const u8[:]
@@ -606,7 +611,7 @@ Raw BAM auxiliary fields, retained without decoding or re-encoding.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
@@ -672,7 +677,7 @@ CSI headers have depth 0..10 and min_shift + 3*depth at most 62.
 
 ```goose
 let index = bam_index::Index { .. };
-assert(index.open("tests/data/example.bam.bai") == bam::Status.Record);
+assert(index.open("tests/data/example.bam.bai") == bam::Status.Ok);
 assert(index.references.len == 2);
 ```
 
@@ -686,13 +691,13 @@ assert(index.references.len == 2);
 fn open(index: Index&, path: const u8[:]) -> bam::Status
 ```
 
-Replace the index. Failure clears any previous data; errors use bam::Status.
+Replace the index, returning Ok on success. Failure clears any previous data.
 The index must belong to the BAM used for loading; the formats have no file
 identity checksum, so a stale index cannot always be detected.
 
 ```goose
 let index = bam_index::Index { .. };
-assert(index.open("tests/data/example.bam.bai") == bam::Status.Record);
+assert(index.open("tests/data/example.bam.bai") == bam::Status.Ok);
 assert(index.open("") == bam::Status.IoError);
 assert(index.references.len == 0);
 ```
@@ -701,7 +706,7 @@ assert(index.references.len == 0);
 
 ## `bam_index::open_for`
 
-[source](bam_index.goose#L129-L141)
+[source](bam_index.goose#L130-L142)
 
 ```goose
 fn open_for(index: Index&, bam_path: const u8[:]) -> bam::Status
@@ -710,12 +715,13 @@ fn open_for(index: Index&, bam_path: const u8[:]) -> bam::Status
 Discover an adjacent index without opening the BAM. Try path + ".csi",
 then replace a trailing ".bam" with ".csi", then the same two BAI names.
 The first existing file wins; parsing or reading errors do not fall back.
-No index is created. Missing indexes return IoError and clear old data.
+Returns Ok on success; no index is created. Missing indexes return IoError
+and clear old data.
 Use open(index_path) to select an explicit index instead.
 
 ```goose
 let index = bam_index::Index { .. };
-index.open_for("tests/data/example.bam").check(bam::Status.Record);
+index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 assert(index.references.len == 2);
 ```
 
@@ -723,7 +729,7 @@ assert(index.references.len == 2);
 
 ## `bam_index::query`
 
-[source](bam_index.goose#L265-L314)
+[source](bam_index.goose#L266-L315)
 
 ```goose
 fn query(index: const Index&, tid: i32, begin: i64, end: i64, output: Chunk[>..]&) -> bam::Status
@@ -740,23 +746,23 @@ Separate queries can still return overlapping chunks. The chunks are only
 candidates: after reading, keep records with the requested tid and with
 record.fields.pos < end and record.fields.end > begin.
 
-Returns Record on success, including an empty region with no chunks.
+Returns Ok on success, including an empty region with no chunks.
 Invalid reference IDs or coordinates outside the index's range fail.
 The index cannot determine whether its BAM file has changed since indexing.
 
 ```goose
 let index = bam_index::Index { .. };
-assert(index.open("tests/data/example.bam.bai") == bam::Status.Record);
+assert(index.open("tests/data/example.bam.bai") == bam::Status.Ok);
 var chunks: bam_index::Chunk[>..] = [];
-assert(index.query(0, 5, 7, chunks) == bam::Status.Record && chunks.len > 0);
-assert(index.query(0, 7, 7, chunks) == bam::Status.Record && chunks.len == 0);
+assert(index.query(0, 5, 7, chunks) == bam::Status.Ok && chunks.len > 0);
+assert(index.query(0, 7, 7, chunks) == bam::Status.Ok && chunks.len == 0);
 ```
 
 <a id="api-26"></a>
 
 ## `bam_index::fetch`
 
-[source](bam_index.goose#L342-L377)
+[source](bam_index.goose#L343-L378)
 
 ```goose
 fn fetch<F: fn(const bam::Record&)>(index: const Index&, reader: bam::Reader&,
@@ -767,7 +773,7 @@ Select and visit alignments overlapping [begin, end) on reference tid.
 Coordinates are zero-based and half-open. Reuses the open reader and index,
 including for backward queries or after EOF. Requires coordinate-sorted BAM
 and a matching index. Sorting is checked only in the visited records.
-Returns Record on completion, including empty results; failures may follow
+Returns Ok on completion, including empty results; failures may follow
 earlier callbacks and do not undo their effects. Every visited record is
 fully decoded and validated. Unlike pileup, no flag/MAPQ filters are applied:
 positioned unmapped and zero-span records use BAM's minimum span of one.
@@ -778,15 +784,15 @@ return exits the enclosing function and permits stopping early.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let index = bam_index::Index { .. };
-index.open_for("tests/data/example.bam").check(bam::Status.Record);
+index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 var count = 0;
 let status = index.fetch(reader, 0 as i32, 5, 7) { record =>
     assert(record.name() == "match");
     count += 1;
 };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 assert(count == 1);
 ```
 
@@ -794,7 +800,7 @@ assert(count == 1);
 
 ## `bam_index::fetch`
 
-[source](bam_index.goose#L393-L396)
+[source](bam_index.goose#L395-L398)
 
 ```goose
 fn fetch<F: fn(const bam::Record&)>(index: const Index&, reader: bam::Reader&,
@@ -803,17 +809,18 @@ fn fetch<F: fn(const bam::Record&)>(index: const Index&, reader: bam::Reader&,
 
 Fetch by reference name instead of ID. Unknown names return Invalid without
 invoking the callback. All other behavior is the same as the tid overload.
+Returns Ok on completion, including empty results.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let index = bam_index::Index { .. };
-index.open_for("tests/data/example.bam").check(bam::Status.Record);
+index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 let status = index.fetch(reader, "chrA", 5, 7) { record =>
     assert(record.name() == "match");
 };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 ```
 
 <a id="api-28"></a>
@@ -891,9 +898,9 @@ those values without calculating the array slices yourself.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 assert(store.records[0].pos == 5 && store.records[0].seq_len == 13);
 ```
 
@@ -947,9 +954,9 @@ survive store reuse. Otherwise treat the fields as read-only.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 assert(store.records.len == 1);
 reader.close(); // Stored records own their bytes, independently of Reader.
 let record = store.record(0);
@@ -981,9 +988,9 @@ Copy any data you need to keep before reusing the store for another region.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(record.fields.seq_len == record.bases.len);
 ```
@@ -1006,9 +1013,9 @@ The returned view is valid until the store is cleared, loaded, or modified.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(record.base(1) == 'C');
 ```
@@ -1028,9 +1035,9 @@ Read name without a trailing NUL.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(record.name() == "match");
 ```
@@ -1050,9 +1057,9 @@ Return a resolved CIGAR word. index must be in [0, fields.cigar_len).
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(record.cigar(0) == 13 << 4);
 ```
@@ -1073,9 +1080,9 @@ index must be in [0, fields.seq_len); sequence stays in stored orientation.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(record.base(1) == 'C');
 ```
@@ -1095,9 +1102,9 @@ Raw Phred quality; 255 means absent. index must be in [0, fields.seq_len).
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(record.quality(1) == 20);
 ```
@@ -1118,9 +1125,9 @@ Empty when Store.retain_auxiliary was false during loading.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 ```
@@ -1167,9 +1174,9 @@ reordering/removing records requires relinking before reading mate_index.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 assert(store.link_mates().pairs == 0 && store.records[0].mate_index == -1);
 ```
 
@@ -1188,7 +1195,7 @@ Read forward and retain alignments overlapping [begin, end) on reference tid.
 tid is the reference's index in the BAM header; coordinates are zero-based,
 with end excluded. Requires coordinate-sorted input and a freshly opened
 reader for each independent query.
-Returns Record on success, including an empty region. Error clears the store.
+Returns Ok on success, including an empty region. Error clears the store.
 This is not an indexed query: it reads preceding records and consumes the
 first mapped record beyond the region. Reopen before a different query.
 Unsorted detects decreasing mapped coordinates only in the scanned prefix;
@@ -1199,9 +1206,9 @@ or store.auto_link_mates=false to skip finding their primary mate partners.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, reader.reference_id("chrA"), 5, 7) == bam::Status.Record);
+assert(store.load(reader, reader.reference_id("chrA"), 5, 7) == bam::Status.Ok);
 assert(store.records.len == 1);
 assert(store.load(reader, 0, 9, 8) == bam::Status.Invalid);
 assert(store.records.len == 0 && store.bases.len == 0);
@@ -1211,7 +1218,7 @@ assert(store.records.len == 0 && store.bases.len == 0);
 
 ## `pileup::load_indexed`
 
-[source](pileup.goose#L393-L410)
+[source](pileup.goose#L394-L411)
 
 ```goose
 fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Index&,
@@ -1230,22 +1237,23 @@ of discarded records are not validated. Retained records are fully checked.
 Invalidates the reader's record view; call read before borrowing it again.
 Failures clear the store. Sorting is checked only in visited chunks; indexes
 cannot prove that the BAM is sorted, complete, or unchanged since indexing.
+Returns Ok on success, including empty regions or no overlapping records.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let index = bam_index::Index { .. };
-assert(index.open("tests/data/example.bam.bai") == bam::Status.Record);
+assert(index.open("tests/data/example.bam.bai") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load_indexed(reader, index, 0, 95, 100) == bam::Status.Record);
-assert(store.load_indexed(reader, index, 0, 5, 7) == bam::Status.Record);
+assert(store.load_indexed(reader, index, 0, 95, 100) == bam::Status.Ok);
+assert(store.load_indexed(reader, index, 0, 5, 7) == bam::Status.Ok);
 {
     let record = store.record(0);
     assert(store.records.len == 1 && record.name() == "match");
 }
 assert(store.load_indexed(reader, index, 0, 0, 30,
-    pileup::Filter { retain_zero_span: true, .. }) == bam::Status.Record);
+    pileup::Filter { retain_zero_span: true, .. }) == bam::Status.Ok);
 var empty = 0;
 for record in store.records { if record.reference_len == 0 { empty += 1; } }
 assert(empty == 3); // Empty CIGAR, insertion-only, soft-clip-only.
@@ -1258,7 +1266,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L436-L442)
+[source](pileup.goose#L437-L443)
 
 ```goose
 fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
@@ -1270,15 +1278,15 @@ Load an indexed region and visit its covered positions. The callback gets
 a zero-based position and entries borrowed for that call; store.record()
 accesses contributing reads. Uses load_indexed's filters, mate linking and
 storage options. A failed load clears the store and invokes no callbacks.
-Returns Record on success, including empty regions. Do not reload or mutate
+Returns Ok on success, including empty regions. Do not reload or mutate
 the store inside the callback. Repeated queries reuse its storage.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let index = bam_index::Index { .. };
-index.open_for("tests/data/example.bam").check(bam::Status.Record);
+index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 let store = pileup::Store { .. };
 var count = 0;
 let status = store.pileup(reader, index, 0 as i32, 5, 7) { pos, entries =>
@@ -1287,7 +1295,7 @@ let status = store.pileup(reader, index, 0 as i32, 5, 7) { pos, entries =>
     assert(record.name() == "match");
     count += 1;
 };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 assert(count == 2);
 ```
 
@@ -1295,7 +1303,7 @@ assert(count == 2);
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L459-L463)
+[source](pileup.goose#L461-L465)
 
 ```goose
 fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
@@ -1305,25 +1313,26 @@ fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
 
 Indexed pileup by reference name. An unknown name returns Invalid and clears
 the store without invoking the callback; otherwise identical to the tid form.
+Returns Ok on success, including empty regions.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let index = bam_index::Index { .. };
-index.open_for("tests/data/example.bam").check(bam::Status.Record);
+index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 let store = pileup::Store { .. };
 let status = store.pileup(reader, index, "chrA", 5, 7) { pos, entries =>
     assert(entries.len == 1);
 };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 ```
 
 <a id="api-44"></a>
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L479-L484)
+[source](pileup.goose#L482-L487)
 
 ```goose
 fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
@@ -1333,23 +1342,24 @@ fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
 Sequential pileup without an index. Uses load's sorted-input contract and
 scans forward from the current position; reopen before an independent query.
 Like the indexed form, callbacks run only after a successful complete load.
+Returns Ok on success, including empty regions.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let store = pileup::Store { .. };
 let status = store.pileup(reader, 0 as i32, 5, 7) { pos, entries =>
     assert(entries.len == 1);
 };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 ```
 
 <a id="api-45"></a>
 
 ## `pileup::pileup`
 
-[source](pileup.goose#L498-L501)
+[source](pileup.goose#L502-L505)
 
 ```goose
 fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
@@ -1357,23 +1367,24 @@ fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
 ```
 
 Sequential pileup by reference name, with the same behavior as the tid form.
+Returns Ok on success, including empty regions; unknown names return Invalid.
 
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let store = pileup::Store { .. };
 let status = store.pileup(reader, "chrA", 5, 7) { pos, entries =>
     assert(entries.len == 1);
 };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 ```
 
 <a id="api-46"></a>
 
 ## `pileup::Op`
 
-[source](pileup.goose#L621-L621)
+[source](pileup.goose#L625-L625)
 
 ```goose
 enum Op { Base, Deletion, RefSkip }
@@ -1390,7 +1401,7 @@ assert(pileup::Op.Deletion != pileup::Op.RefSkip);
 
 ## `pileup::Entry`
 
-[source](pileup.goose#L641-L644)
+[source](pileup.goose#L645-L648)
 
 ```goose
 struct Entry {
@@ -1407,9 +1418,9 @@ Sequence remains in BAM's stored orientation, including reverse-strand reads.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 6) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 6) == bam::Status.Ok);
 store.columns() { pos, entries =>
     assert(pos == 5 && entries.len == 1);
     let e = entries[0];
@@ -1422,7 +1433,7 @@ store.columns() { pos, entries =>
 
 ## `pileup::columns`
 
-[source](pileup.goose#L725-L772)
+[source](pileup.goose#L729-L776)
 
 ```goose
 fn columns<F: fn(i64, const Entry[:])>(store: const Store&)
@@ -1438,9 +1449,9 @@ alone never create columns. Empty positions are omitted, not zero-filled.
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 var count = 0;
 store.columns() { pos, entries =>
     assert(pos == 5 + count && entries.len == 1);
@@ -1475,7 +1486,7 @@ let cigar: u32[] = [2 << 4];
 let alignment = bam_encode::Alignment { name: "read", tid: 0, pos: 4,
     cigar: cigar, sequence: "aN", .. };
 var bytes: u8[>..] = [];
-assert(bam_encode::encode(alignment, bytes, 1) == bam::Status.Record);
+assert(bam_encode::encode(alignment, bytes, 1) == bam::Status.Ok);
 assert(bytes.len > 32);
 ```
 
@@ -1499,7 +1510,7 @@ long CIGAR and is retained. Output is cleared on failure.
 let alignment = bam_encode::Alignment { name: "unmapped", flags: 4,
     sequence: "ACN", .. };
 var bytes: u8[>..] = [];
-assert(bam_encode::encode(alignment, bytes, 0) == bam::Status.Record);
+assert(bam_encode::encode(alignment, bytes, 0) == bam::Status.Ok);
 let fields, ok = bam::decode(bytes, 0);
 assert(ok && fields.seq_len == 3 && fields.flags == 4);
 ```
@@ -1527,7 +1538,7 @@ or parallel compression is implicit. max_record_bytes defaults to 16 MiB.
 
 ```goose
 let writer = bam_writer::Writer { .. };
-assert(writer.close() == bam::Status.Record);
+assert(writer.close() == bam::Status.Ok);
 ```
 
 <a id="api-52"></a>
@@ -1546,8 +1557,8 @@ output is closed without an EOF marker. Repeated close succeeds.
 
 ```goose
 let writer = bam_writer::Writer { .. };
-assert(writer.close() == bam::Status.Record);
-assert(writer.close() == bam::Status.Record);
+assert(writer.close() == bam::Status.Ok);
+assert(writer.close() == bam::Status.Ok);
 ```
 
 <a id="api-53"></a>
@@ -1591,7 +1602,7 @@ headers must name the same targets in the same order; IDs are not remapped.
 let writer = bam_writer::Writer { .. };
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(writer.write(record) == bam::Status.Closed);
@@ -1634,9 +1645,9 @@ quality, aux, mate fields and stored orientation are preserved.
 let writer = bam_writer::Writer { .. };
 let reader = bam::Reader { .. };
 defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 let record = store.record(0);
 assert(writer.write(record) == bam::Status.Closed);
 ```
@@ -1713,14 +1724,15 @@ assert(reader.status == bam::Status.Closed);
 
 ## `sam::open`
 
-[source](sam.goose#L67-L94)
+[source](sam.goose#L68-L95)
 
 ```goose
 fn open(reader: Reader&, path: const u8[:]) -> bam::Status
 ```
 
 Open and read leading header lines, preserving the first alignment for
-read(). Empty/header-only files open successfully. Errors close the input.
+read(). Returns Ok on success, including empty/header-only files.
+Errors close the input; call read() before borrowing an alignment.
 
 ```goose
 let path = "tests/data/doc.sam";
@@ -1728,14 +1740,14 @@ assert(write_file(path, "@SQ\tSN:chrA\tLN:100\nr\t0\tchrA\t6\t40\t4M\t*\t0\t0\tA
 defer delete_file(path);
 let reader = sam::Reader { .. };
 defer reader.close();
-assert(reader.open(path) == bam::Status.Record);
+assert(reader.open(path) == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
 assert(record.name() == "r" && record.fields.pos == 5);
 assert(record.base(2) == 'G' && record.quality(2) == 40);
-assert(reader.open(path) == bam::Status.Record);
+assert(reader.open(path) == bam::Status.Ok);
 let store = pileup::Store { .. };
-assert(store.load(reader, 0, 6, 8) == bam::Status.Record);
+assert(store.load(reader, 0, 6, 8) == bam::Status.Ok);
 var columns = 0;
 store.columns() { pos, entries => assert(entries.len == 1); columns += 1; };
 assert(columns == 2);
@@ -1745,7 +1757,7 @@ assert(columns == 2);
 
 ## `sam::reference_id`
 
-[source](sam.goose#L174-L174)
+[source](sam.goose#L175-L175)
 
 ```goose
 fn reference_id(reader: const Reader&, name: const u8[:]) -> i32
@@ -1762,7 +1774,7 @@ assert(reader.reference_id("missing") == -1);
 
 ## `sam::read`
 
-[source](sam.goose#L184-L193)
+[source](sam.goose#L186-L197)
 
 ```goose
 fn read(reader: Reader&) -> bam::Status
@@ -1771,6 +1783,7 @@ fn read(reader: Reader&) -> bam::Status
 Decode the next line into reused BAM storage. Record views expire on the
 next read/open/close. Unlike Seqair's recoverable malformed-line error, all
 errors remain sticky here, matching bam::Reader's contract.
+Returns Record for a validated alignment, End when exhausted, or a failure.
 
 ```goose
 let reader = sam::Reader { .. };
@@ -1781,7 +1794,7 @@ assert(reader.read() == bam::Status.Closed);
 
 ## `sam::record`
 
-[source](sam.goose#L202-L205)
+[source](sam.goose#L206-L209)
 
 ```goose
 fn record(reader: const Reader&) -> bam::Record
@@ -1873,7 +1886,7 @@ assert(reader.status == bam::Status.Closed);
 fn open(reader: Reader&, path: const u8[:]) -> bam::Status
 ```
 
-Open CRAM 3.0/3.1 and decode its SAM header. Record means ready, not a read.
+Open CRAM 3.0/3.1 and decode its SAM header. Ok means ready, not a read.
 Validates container/block CRCs. Older CRAM versions return Invalid. Bzip2
 and XZ blocks require system libbz2/liblzma; missing codecs return Invalid
 with unsupported_method set. No reference is fetched during header parsing.
@@ -1888,7 +1901,7 @@ assert(reader.open("tests/data/example.bam") == bam::Status.Invalid);
 
 ## `cram::seek_slice`
 
-[source](cram.goose#L422-L446)
+[source](cram.goose#L423-L448)
 
 ```goose
 fn seek_slice<R>(reader: Reader&, container_offset: i64, slice_offset: i64, size: i64, source: R&) -> bam::Status
@@ -1899,6 +1912,7 @@ offset; slice_offset is relative to container data, not its header. size must
 match the landmark span. Header/reference metadata survives; borrowed records
 do not. Reuses the compressed container when adjacent queries share it.
 source has the same contract as read. Use cram_index::Cursor for region reads.
+Returns Ok when the slice is ready; call read() before borrowing a record.
 
 ```goose
 let reader = cram::Reader { .. }; let source = ExampleReference { .. };
@@ -1909,7 +1923,7 @@ assert(reader.seek_slice(0, 0, 0, source) == bam::Status.Closed);
 
 ## `cram::read`
 
-[source](cram.goose#L461-L488)
+[source](cram.goose#L464-L493)
 
 ```goose
 fn read<R>(reader: Reader&, source: R&) -> bam::Status
@@ -1922,6 +1936,7 @@ An adapter can use goose-bio faidx::Reader; no FASTA dependency is imposed.
 Reference bases are uppercased and nonzero single-reference MD5s checked.
 Embedded/no-reference slices bypass source. Fetch failures and checked MD5
 mismatches fail; multi-reference/zero-MD5 slices cannot verify FASTA identity.
+Returns Record for a validated alignment, End when exhausted, or a failure.
 
 ```goose
 let reader = cram::Reader { .. };
@@ -1933,7 +1948,7 @@ assert(reader.read(source) == bam::Status.Closed);
 
 ## `cram::record`
 
-[source](cram.goose#L497-L497)
+[source](cram.goose#L502-L502)
 
 ```goose
 fn record(reader: const Reader&) -> bam::Record
@@ -1951,7 +1966,7 @@ assert(reader.status == bam::Status.Closed); // Read before calling record().
 
 ## `cram::reference_id`
 
-[source](cram.goose#L505-L505)
+[source](cram.goose#L510-L510)
 
 ```goose
 fn reference_id(reader: const Reader&, name: const u8[:]) -> i32
@@ -1968,7 +1983,7 @@ assert(reader.reference_id("missing") == -1);
 
 ## `cram::load`
 
-[source](cram.goose#L519-L547)
+[source](cram.goose#L525-L554)
 
 ```goose
 fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: i64, end: i64,
@@ -1980,6 +1995,7 @@ Requires sorted input and a freshly opened reader per independent query,
 like the BAM/SAM sequential path. Errors clear the store. On success, the
 store retains auxiliary tags and links mates unless its retain_auxiliary
 or auto_link_mates option is false.
+Returns Ok on success, including empty regions or no overlapping records.
 
 ```goose
 let reader = cram::Reader { .. };
@@ -2012,13 +2028,14 @@ assert(index.open("") == bam::Status.IoError);
 
 ## `cram_index::open`
 
-[source](cram_index.goose#L87-L93)
+[source](cram_index.goose#L88-L94)
 
 ```goose
 fn open(index: Index&, path: const u8[:]) -> bam::Status
 ```
 
 Replace an index; errors clear the previous entries. Empty indexes are valid.
+Returns Ok on success.
 
 ```goose
 let index = cram_index::Index { .. };
@@ -2029,7 +2046,7 @@ assert(index.open("") == bam::Status.IoError && index.entries.len == 0);
 
 ## `cram_index::Cursor`
 
-[source](cram_index.goose#L104-L108)
+[source](cram_index.goose#L105-L109)
 
 ```goose
 root struct Cursor {
@@ -2053,7 +2070,7 @@ assert(cursor.status == bam::Status.Closed);
 
 ## `cram_index::fetch`
 
-[source](cram_index.goose#L119-L148)
+[source](cram_index.goose#L121-L150)
 
 ```goose
 fn fetch(cursor: Cursor&, index: const Index&, reader: cram::Reader&, tid: i32, begin: i64, end: i64) -> bam::Status
@@ -2062,6 +2079,7 @@ fn fetch(cursor: Cursor&, index: const Index&, reader: cram::Reader&, tid: i32, 
 Select candidate slices for [begin,end). Nested spans are retained, duplicate
 slice addresses removed, and selected slices sorted in file order. The caller
 must use the index for this CRAM; skipped slices are not validated.
+Returns Ok on success, even with no slices; read delivers records or End.
 
 ```goose
 let cursor = cram_index::Cursor { .. }; let index = cram_index::Index { .. };
@@ -2073,7 +2091,7 @@ assert(cursor.fetch(index, reader, 0, 0, 1) == bam::Status.Closed);
 
 ## `cram_index::read`
 
-[source](cram_index.goose#L159-L180)
+[source](cram_index.goose#L163-L185)
 
 ```goose
 fn read<R>(cursor: Cursor&, reader: cram::Reader&, source: R&) -> bam::Status
@@ -2082,6 +2100,8 @@ fn read<R>(cursor: Cursor&, reader: cram::Reader&, source: R&) -> bam::Status
 Decode only the selected slices, retaining the reader's reusable container
 and codec storage. A fetch after EOF/error may seek backward or cross contigs.
 Reference-provider semantics are the same as cram::read.
+Returns Record for a validated overlapping alignment, End when exhausted,
+or a failure.
 
 ```goose
 let cursor = cram_index::Cursor { .. }; let reader = cram::Reader { .. };
@@ -2111,7 +2131,7 @@ max_record_bytes bounds encoded BAM input; max_line_bytes bounds SAM output.
 
 ```goose
 let writer = sam_writer::Writer { .. };
-assert(writer.close() == bam::Status.Record);
+assert(writer.close() == bam::Status.Ok);
 ```
 
 <a id="api-78"></a>
@@ -2129,8 +2149,8 @@ A failed output may contain complete earlier records, never a success signal.
 
 ```goose
 let writer = sam_writer::Writer { .. };
-assert(writer.close() == bam::Status.Record);
-assert(writer.close() == bam::Status.Record);
+assert(writer.close() == bam::Status.Ok);
+assert(writer.close() == bam::Status.Ok);
 ```
 
 <a id="api-79"></a>
@@ -2149,16 +2169,16 @@ header validation succeeds. Header text follows Seqair's SAM formatter.
 
 ```goose
 let reader = bam::Reader { .. }; defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let writer = sam_writer::Writer { .. }; defer writer.close();
 let path = "tests/data/writer.sam"; defer delete_file(path);
-assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Record);
+assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
-assert(writer.write(record) == bam::Status.Record);
-assert(writer.close() == bam::Status.Record);
+assert(writer.write(record) == bam::Status.Ok);
+assert(writer.close() == bam::Status.Ok);
 let input = sam::Reader { .. }; defer input.close();
-assert(input.open(path) == bam::Status.Record && input.read() == bam::Status.Record);
+assert(input.open(path) == bam::Status.Ok && input.read() == bam::Status.Record);
 let decoded = input.record();
 assert(decoded.name() == "match");
 ```
@@ -2236,7 +2256,7 @@ reduction or index creation. Set limits before open; check close for errors.
 
 ```goose
 let writer = cram_writer::Writer { .. };
-assert(writer.close() == bam::Status.Record);
+assert(writer.close() == bam::Status.Ok);
 ```
 
 <a id="api-83"></a>
@@ -2272,8 +2292,8 @@ success. Always release the compressor/file. Repeated close succeeds.
 
 ```goose
 let writer = cram_writer::Writer { .. };
-assert(writer.close() == bam::Status.Record);
-assert(writer.close() == bam::Status.Record);
+assert(writer.close() == bam::Status.Ok);
+assert(writer.close() == bam::Status.Ok);
 ```
 
 <a id="api-85"></a>
@@ -2292,17 +2312,17 @@ is 0 or 1 (default 1). Header SQ names/lengths must match the target dictionary.
 
 ```goose
 let reader = bam::Reader { .. }; defer reader.close();
-assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 let writer = cram_writer::Writer { .. }; defer writer.close();
 let path = "tests/data/writer.cram"; defer delete_file(path);
-assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Record);
+assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Ok);
 assert(reader.read() == bam::Status.Record);
 let record = reader.record();
-assert(writer.write(record) == bam::Status.Record);
-assert(writer.close() == bam::Status.Record);
+assert(writer.write(record) == bam::Status.Ok);
+assert(writer.close() == bam::Status.Ok);
 let input = cram::Reader { .. }; defer input.close();
 let reference = ExampleReference {};
-assert(input.open(path) == bam::Status.Record && input.read(reference) == bam::Status.Record);
+assert(input.open(path) == bam::Status.Ok && input.read(reference) == bam::Status.Record);
 let decoded = input.record();
 assert(decoded.name() == "match");
 ```

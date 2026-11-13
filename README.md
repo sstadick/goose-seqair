@@ -37,9 +37,9 @@ declare all transitive imports required by Goose. For sequential iteration:
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let status = reader.records() { record => print(record.name()); };
-status.check(bam::Status.Record);
+status.check(bam::Status.Ok);
 ```
 
 For indexed records and pileups, open the index once and reuse it:
@@ -47,13 +47,13 @@ For indexed records and pileups, open the index once and reuse it:
 ```goose
 let reader = bam::Reader { .. };
 defer reader.close();
-reader.open("tests/data/example.bam").check(bam::Status.Record);
+reader.open("tests/data/example.bam").check(bam::Status.Ok);
 let index = bam_index::Index { .. };
-index.open_for("tests/data/example.bam").check(bam::Status.Record);
+index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 let fetched = index.fetch(reader, "chrA", 5, 18) { record =>
     print(record.name());
 };
-fetched.check(bam::Status.Record);
+fetched.check(bam::Status.Ok);
 let store = pileup::Store { .. };
 let piled = store.pileup(reader, index, "chrA", 5, 18) { pos, entries =>
     for &entry in entries {
@@ -63,15 +63,21 @@ let piled = store.pileup(reader, index, "chrA", 5, 18) { pos, entries =>
         assert(record.fields.pos <= pos);
     }
 };
-piled.check(bam::Status.Record);
+piled.check(bam::Status.Ok);
 assert(store.mate_stats.ambiguous_qnames == 0);
 ```
 
 `fetch` and `pileup` accept either a reference name or an `i32` ID. Omit the
 index argument for a sequential pileup. All three iteration helpers return
-`Record` on successful completion, including empty results; low-level `read()`
-still returns `End` at EOF. Record callbacks borrow the reader's bytes and can
-precede a later read error. Pileup callbacks run only after a successful load.
+`Ok` on successful completion, including empty results. `reader.records()`
+leaves `reader.status` at `End`; low-level `read()` returns `Record` only when
+delivering an alignment and `End` on the next call after the final alignment.
+When migrating from v0.3.x to v0.4.0, change successful operation checks from `Record`
+to `Ok` for open/seek, indexes, iteration helpers, region loads, encoding and
+writing. Keep `read()` loops checking `Record` and then `End`.
+
+Record callbacks borrow the reader's bytes and can precede a later read error.
+Pileup callbacks run only after a successful load.
 Do not reposition the reader inside record callbacks or mutate the store inside
 column callbacks. Inline `return` stops iteration by exiting the enclosing function.
 
@@ -81,7 +87,7 @@ handler instead; it runs only on a mismatch:
 
 ```goose
 fn open_input(reader: bam::Reader&, path: const u8[:]) -> bool {
-    reader.open(path).check(bam::Status.Record) { actual =>
+    reader.open(path).check(bam::Status.Ok) { actual =>
         return false; // Returns from open_input, running its deferred cleanup.
     };
     return true;
@@ -128,8 +134,11 @@ by package name. No sibling SIMD checkout is required.
   header. Reader views decode packed sequence on access; region stores expand
   it once at load time. Both retain BAM orientation: reverse-strand alignments
   are **not** reverse-complemented a second time. All 16 IUPAC codes are preserved.
-- `bam::Status.Record` means success for open/load and one available alignment
-  for read. `End` means clean EOF; `Invalid`, `Truncated`, `IoError`, `Closed`,
+- `bam::Status.Ok` means successful open/seek, index selection, region load,
+  callback iteration, encoding, or writer operation. `Record` means `read()`
+  delivered one alignment; `End` means clean EOF. Reader status is `Ok` after
+  open/seek, `Record` after a successful read, and `End` after EOF.
+  `Invalid`, `Truncated`, `IoError`, `Closed`,
   and `TooLarge` distinguish failures. Reader EOF/errors remain sticky until
   reopen or seek. A failed region load clears the store rather than returning a
   partial result. `Unsorted` detects decreasing mapped coordinates in visited
@@ -243,13 +252,13 @@ blocks. It does not sort, build an index, or compress in parallel.
 ```goose
 let writer = bam_writer::Writer { .. };
 defer writer.close();
-assert(writer.open("copy.bam", reader.header, reader.references, reader.names) == bam::Status.Record);
+assert(writer.open("copy.bam", reader.header, reader.references, reader.names) == bam::Status.Ok);
 while reader.read() == bam::Status.Record {
     let record = reader.record();
-    assert(writer.write(record) == bam::Status.Record);
+    assert(writer.write(record) == bam::Status.Ok);
 }
 assert(reader.status == bam::Status.End);
-assert(writer.close() == bam::Status.Record);
+assert(writer.close() == bam::Status.Ok);
 ```
 
 Use the same reference dictionary/order as the input; IDs are not remapped.
@@ -299,8 +308,9 @@ and a working faidx adapter using goose-bio v0.4.1; no sibling Bio checkout is n
 
 For indexed access, open a matching plain or gzip/BGZF CRAI with
 `cram_index::Index.open`, select a region with
-`cursor.fetch(index, reader, tid, begin, end)`, then call
-`cursor.read(reader, source)` until `End`. Records use `reader.record()`.
+`cursor.fetch(index, reader, tid, begin, end)` (returns `Ok`, not an alignment),
+then call `cursor.read(reader, source)` until `End`. Each `Record` result
+delivers an alignment through `reader.record()`.
 Each worker owns its reader and cursor; backward and repeated queries reuse
 container and codec buffers. Only selected slices are decoded. Nested spans
 are retained, duplicate slice addresses removed, and records stay in file order.

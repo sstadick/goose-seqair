@@ -27,7 +27,7 @@ fn main() {
         assert(fasta.open(args[2]) == faidx::Status.Ok);
         let source = Reference { reader: fasta };
         let reader = cram::Reader { .. }; defer reader.close();
-        assert(reader.open(args[1]) == bam::Status.Record);
+        assert(reader.open(args[1]) == bam::Status.Ok);
         records = 0; bases = 0;
         while reader.read(source) == bam::Status.Record { records += 1; bases += reader.fields.seq_len; }
         assert(reader.status == bam::Status.End);

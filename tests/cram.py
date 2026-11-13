@@ -65,8 +65,11 @@ def suite(command, directory):
         duplicate_index = directory / "duplicate.crai"
         duplicate_index.write_bytes(text_index + text_index)
         queries = [("chrB", 12, 18), ("chrA", 9, 30), ("chrA", 80, 90),
-                   ("chrA", 5, 6), ("chrA", 9, 30), ("chrA", 30, 30)]
-        records_text = invoke("cram", path, ref)[:-1]
+                   ("chrA", 5, 6), ("chrA", 9, 30), ("chrA", 30, 30), ("chrB", 100, 110)]
+        streamed = invoke("cram", path, ref)
+        assert streamed[-1] == "S\tEnd"
+        records_text = streamed[:-1]
+        assert len(records_text) == len(reads) and records_text[-1].startswith("R\tunplaced\t")
         expected_queries = []
         for contig, begin, end in queries:
             tid = 0 if contig == "chrA" else 1
@@ -77,10 +80,11 @@ def suite(command, directory):
                     assert [r.split("\t")[1] for r in selected] == [r.query_name for r in indexed.fetch(contig, begin, end)], (name, contig, begin, end)
             expected_queries += [f"Q\t{contig}\t{begin}\t{end}", *selected, "S\tEnd"]
         for idx in (crai, raw_index, split_index, duplicate_index):
+            assert subprocess.check_output([*map(str, command), "cram-index", str(idx)], text=True) == "S\tOk\n"
             assert invoke("cram-indexed", path, ref, idx, *[v for q in queries for v in q]) == expected_queries, (name, idx)
         bad_index = directory / "bad.crai"
         bad_index.write_bytes(b"0\t1\t10\t26\t0\t1\n")
-        assert invoke("cram-indexed", path, ref, bad_index, "chrA", 0, 10)[-1] != "S\tEnd"
+        assert invoke("cram-indexed", path, ref, bad_index, "chrA", 0, 10)[-1] not in ("S\tOk", "S\tRecord", "S\tEnd")
         # Bounds, checksum, integer overflow, and expanded gzip index limits.
         expanded = directory / "expanded.crai"
         expanded.write_bytes(gzip.compress(text_index * 1000))
@@ -90,13 +94,14 @@ def suite(command, directory):
                      b"0\t1\t2\t9223372036854775808\t4\t9\n", crai.read_bytes()[:-1]):
             bad_index.write_bytes(data)
             status = subprocess.check_output([*map(str, command), "cram-index", str(bad_index)], text=True)
-            assert status != "S\tRecord\n", (name, data)
+            assert status not in ("S\tOk\n", "S\tRecord\n", "S\tEnd\n"), (name, data)
         # Compare every per-read column entry, including deletion/refskip,
         # query offsets, bases and missing qualities, not merely depth.
         from run import oracle
-        for contig, begin, end in (("chrA", 9, 30), ("chrB", 12, 18), ("chrA", 80, 90)):
-            expected = oracle(output, begin, end, 0, contig=contig)
-            assert invoke("cram-pileup", path, ref, contig, begin, end) == expected + ["S\tRecord"], name
+        for contig, begin, end in (("chrA", 9, 30), ("chrB", 12, 18), ("chrA", 80, 90),
+                                  ("chrA", 30, 30), ("chrB", 100, 110)):
+            expected = oracle(output, begin, end, 0, contig=contig) if begin < end else []
+            assert invoke("cram-pileup", path, ref, contig, begin, end) == expected + ["S\tOk"], name
         assert invoke("cram-limit", path, ref)[-1] == "S\tTooLarge"
         if name in ("v30", "v31"):
             assert invoke("cram", path, empty) == ["S\tInvalid"]
@@ -113,5 +118,5 @@ def suite(command, directory):
     # marker's dummy blocks. Corrupt file headers and actual data blocks here.
     for offset in (0, 4, 5, 26, len(raw) // 2):
         corrupt = bytearray(raw); corrupt[offset] ^= 255; damaged.write_bytes(corrupt)
-        assert invoke("cram", damaged, reference)[-1] != "S\tEnd", offset
+        assert invoke("cram", damaged, reference)[-1] not in ("S\tOk", "S\tRecord", "S\tEnd"), offset
     print(f"PASS {command}: CRAM 3.0/3.1 records, references, mates, regions and corruption", flush=True)

@@ -4,9 +4,11 @@ import std;
 import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";
 import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 
-// Result of a BAM operation. read() returns Record when an alignment is ready
-// and End at normal end-of-file. open() and seek() also return Record on success,
-// but you must call read() before accessing an alignment after either operation.
+// Result shared by BAM, SAM, CRAM, indexes, writers and pileup operations.
+// Ok means an operation completed successfully, including an empty query.
+// read() returns Record when an alignment is ready (including the last one),
+// and End only when no next alignment exists. open() and seek() return Ok;
+// call read() before accessing an alignment after either operation.
 //
 // Other values report failures. TooLarge means a configured size limit was
 // exceeded. Unsorted is reported by region-loading code when mapped records
@@ -27,10 +29,12 @@ enum Status {
     Closed,
     TooLarge,
     Unsorted,
+    Ok,
 }
 
 fn status_name(status: Status) -> const u8[:] {
     match status {
+        Ok => "Ok",
         Record => "Record", End => "End", Invalid => "Invalid", Truncated => "Truncated",
         IoError => "IoError", Closed => "Closed", TooLarge => "TooLarge", Unsorted => "Unsorted",
     }
@@ -44,7 +48,7 @@ fn status_name(status: Status) -> const u8[:] {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// reader.open("tests/data/example.bam").check(bam::Status.Record, "opening BAM");
+// reader.open("tests/data/example.bam").check(bam::Status.Ok, "opening BAM");
 // reader.read().check(bam::Status.Record);
 // ```
 fn check(actual: Status, expected: Status, message: const u8[:] = "BAM status mismatch") -> Status {
@@ -61,7 +65,7 @@ fn check(actual: Status, expected: Status, message: const u8[:] = "BAM status mi
 //
 // ```goose
 // var called = false;
-// let status = bam::Status.Closed.check(bam::Status.Record) { actual =>
+// let status = bam::Status.Closed.check(bam::Status.Ok) { actual =>
 //     assert(actual == bam::Status.Closed);
 //     called = true;
 // };
@@ -81,7 +85,7 @@ fn check<F: fn(Status)>(actual: Status, expected: Status) -> Status {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let ref = reader.references[0];
 // assert(reader.names[ref.name..ref.name + ref.name_len] == "chrA");
 // assert(ref.length == 200000);
@@ -107,7 +111,7 @@ struct Reference {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let f = reader.record().fields;
 // assert(f.pos == 5 && f.end == 18 && f.reference_len == 13);
@@ -139,7 +143,7 @@ struct Fields {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.name() == "match" && record.fields.tid == 0);
@@ -163,7 +167,7 @@ struct Record {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.references.len == 2);
 // assert(reader.header[..3] == "@HD");
 // ```
@@ -186,7 +190,7 @@ inline fn signed32(bytes: const u8[:], at: i64) -> i32 { bgzf::le32(bytes, at) a
 
 fn from_bgzf(status: bgzf::Status) -> Status {
     match status {
-        Ready => Status.Record,
+        Ready => Status.Ok,
         End => Status.End,
         Truncated => Status.Truncated,
         Invalid => Status.Invalid,
@@ -198,14 +202,14 @@ fn from_bgzf(status: bgzf::Status) -> Status {
 fn required(reader: Reader&, output: u8[:]) -> bool {
     reader.status = from_bgzf(reader.stream.read(output));
     if reader.status == Status.End { reader.status = Status.Truncated; }
-    reader.status == Status.Record
+    reader.status == Status.Ok
 }
 
 // Close the file and decompressor. Header storage remains readable until open.
 //
 // ```goose
 // let reader = bam::Reader { .. };
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // reader.close();
 // reader.close();
 // assert(reader.read() == bam::Status.Closed);
@@ -217,15 +221,15 @@ fn close(reader: Reader&) {
     reader.block_begin = -1;
 }
 
-// Open and read the BAM header. Record means ready to read the first alignment;
+// Open and read the BAM header. Ok means ready to read the first alignment;
 // it does not mean an alignment is already available. Failure closes the file.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.name() == "match");
@@ -237,13 +241,13 @@ fn open(reader: Reader&, path: const u8[:]) -> Status {
     reader.references.clear();
     reader.data_start = 0;
     reader.status = from_bgzf(reader.stream.open(path));
-    if reader.status != Status.Record { return reader.status; }
+    if reader.status != Status.Ok { return reader.status; }
     if !read_header(reader) {
         reader.stream.close();
         return reader.status;
     }
     reader.data_start = reader.stream.tell();
-    Status.Record
+    Status.Ok
 }
 
 // Virtual offset of the next alignment, usable with seek on this same BAM.
@@ -252,7 +256,7 @@ fn open(reader: Reader&, path: const u8[:]) -> Status {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let start = reader.tell();
 // assert(reader.read() == bam::Status.Record && reader.tell() > start);
 // ```
@@ -261,14 +265,15 @@ fn tell(reader: const Reader&) -> u64 { reader.stream.tell() }
 // Seek to an alignment boundary obtained from tell or a matching BAM index.
 // Invalidates record views and resets EOF/errors, retaining the header. An
 // arbitrary byte offset is not an alignment boundary and may fail on read.
+// Returns Ok when positioned; call read() to obtain a validated alignment.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let start = reader.tell();
 // assert(reader.read() == bam::Status.Record);
-// assert(reader.seek(start) == bam::Status.Record);
+// assert(reader.seek(start) == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.name() == "match");
@@ -320,7 +325,7 @@ fn read_header(reader: Reader&) -> bool {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.reference_id("chrB") == 1);
 // assert(reader.reference_id("absent") == -1);
 // ```
@@ -336,7 +341,7 @@ fn reference_id(reader: const Reader&, name: const u8[:]) -> i32 {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let first = reader.record();
 // assert(first.name() == "match");
@@ -354,11 +359,12 @@ fn record(reader: const Reader&) -> Record {
 // Read one alignment, reusing bytes. Record bytes are invalidated even when a
 // read fails. End and failures are sticky until open/seek. Records can span
 // many BGZF blocks.
+// Returns Record for a validated alignment, End when exhausted, or a failure.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // var count = 0;
 // var status = reader.read();
 // while status == bam::Status.Record { count += 1; status = reader.read(); }
@@ -367,13 +373,13 @@ fn record(reader: const Reader&) -> Record {
 // ```
 fn read(reader: Reader&) -> Status {
     let status = reader.read_payload();
-    if status != Status.Record { return status; }
+    if status != Status.Ok { return status; }
     reader.decode_record()
 }
 
 // Visit remaining records from the current position without copying them.
 // Each view expires on the next reader operation; do not reposition or close
-// the reader inside the callback. Returns Record on clean completion (even
+// the reader inside the callback. Returns Ok on clean completion (even
 // when already at EOF), otherwise the read failure. Earlier callbacks are not
 // rolled back on failure. reader.status remains End after normal completion.
 // An inline callback can return from its enclosing function to stop early.
@@ -381,16 +387,16 @@ fn read(reader: Reader&) -> Status {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// reader.open("tests/data/example.bam").check(bam::Status.Ok);
 // var count = 0;
 // let status = reader.records() { record => count += 1; };
-// status.check(bam::Status.Record);
+// status.check(bam::Status.Ok);
 // assert(count == 21 && reader.status == bam::Status.End);
 // ```
 fn records<F: fn(const Record&)>(reader: Reader&) -> Status {
     loop {
         let status = reader.read();
-        if status == Status.End { return Status.Record; }
+        if status == Status.End { return Status.Ok; }
         if status != Status.Record { return status; }
         let record = reader.record();
         F(record);
@@ -400,7 +406,8 @@ fn records<F: fn(const Record&)>(reader: Reader&) -> Status {
 // Internal framing step for indexed filtering. fields is not valid until
 // decode_record succeeds; only record().bytes may be inspected between them.
 fn read_payload(reader: Reader&) -> Status {
-    if reader.status != Status.Record { return reader.status; }
+    if reader.status == Status.Record { reader.status = Status.Ok; }
+    if reader.status != Status.Ok { return reader.status; }
     reader.bytes.clear();
     reader.block_begin = -1;
     var len: i64 = 0;
@@ -410,7 +417,7 @@ fn read_payload(reader: Reader&) -> Status {
     } else {
         var word: u8[4] = [0; 4];
         reader.status = from_bgzf(reader.stream.read(word));
-        if reader.status != Status.Record { return reader.status; }
+        if reader.status != Status.Ok { return reader.status; }
         len = signed32(word, 0);
     }
     if len < 32 { reader.status = Status.Invalid; return reader.status; }
@@ -422,7 +429,7 @@ fn read_payload(reader: Reader&) -> Status {
         reader.bytes.resize(len, 0);
         if !reader.required(reader.bytes) { return reader.status; }
     }
-    Status.Record
+    Status.Ok
 }
 
 fn decode_record(reader: Reader&) -> Status {
@@ -430,6 +437,7 @@ fn decode_record(reader: Reader&) -> Status {
     let fields, ok = decode(raw.bytes, reader.references.len);
     if !ok { reader.status = Status.Invalid; return reader.status; }
     reader.fields = fields;
+    reader.status = Status.Record;
     reader.status
 }
 
@@ -572,7 +580,7 @@ fn decode(bytes: const u8[:], references: i64) -> Fields, bool {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.name() == "match");
@@ -585,7 +593,7 @@ fn name(record: const Record&) -> const u8[:] { record.bytes[32..31 + record.fie
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.cigar(0) == 13 << 4); // 13M
@@ -602,7 +610,7 @@ fn cigar(record: const Record&, index: i64) -> u32 {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.base(0) == 'A' && record.base(1) == 'C');
@@ -620,7 +628,7 @@ fn base(record: const Record&, index: i64) -> u8 {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.quality(0) == 13 && record.quality(1) == 20);
@@ -635,7 +643,7 @@ fn quality(record: const Record&, index: i64) -> u8 {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");

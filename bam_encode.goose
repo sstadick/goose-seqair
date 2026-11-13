@@ -20,7 +20,7 @@ extern fn pack_codes(input: const u8[:], output: u8[:]) -> i32 = "goose_seqair_p
 // let alignment = bam_encode::Alignment { name: "read", tid: 0, pos: 4,
 //     cigar: cigar, sequence: "aN", .. };
 // var bytes: u8[>..] = [];
-// assert(bam_encode::encode(alignment, bytes, 1) == bam::Status.Record);
+// assert(bam_encode::encode(alignment, bytes, 1) == bam::Status.Ok);
 // assert(bytes.len > 32);
 // ```
 struct Alignment {
@@ -40,14 +40,14 @@ struct Alignment {
 // let alignment = bam_encode::Alignment { name: "unmapped", flags: 4,
 //     sequence: "ACN", .. };
 // var bytes: u8[>..] = [];
-// assert(bam_encode::encode(alignment, bytes, 0) == bam::Status.Record);
+// assert(bam_encode::encode(alignment, bytes, 0) == bam::Status.Ok);
 // let fields, ok = bam::decode(bytes, 0);
 // assert(ok && fields.seq_len == 3 && fields.flags == 4);
 // ```
 fn encode(a: const Alignment&, bytes: u8[>..]&, references: i64,
           max_bytes: i64 = 16777216) -> bam::Status {
     let status = encode_body(a, bytes, references, max_bytes, SequenceEncoding.Ascii);
-    if status != bam::Status.Record { bytes.clear(); }
+    if status != bam::Status.Ok { bytes.clear(); }
     status
 }
 
@@ -146,5 +146,5 @@ fn encode_body(a: const Alignment&, bytes: u8[>..]&, references: i64,
         let fields, ok = bam::decode(bytes, references);
         if !ok { return bam::Status.Invalid; }
     }
-    bam::Status.Record
+    bam::Status.Ok
 }

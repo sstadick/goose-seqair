@@ -14,7 +14,7 @@ import bstr from "github.com/sstadick/goose-bstr@v0.3.1";
 //
 // ```goose
 // let writer = bam_writer::Writer { .. };
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.close() == bam::Status.Ok);
 // ```
 root struct Writer {
     stream: bgzf::Writer,
@@ -30,15 +30,15 @@ root struct Writer {
 //
 // ```goose
 // let writer = bam_writer::Writer { .. };
-// assert(writer.close() == bam::Status.Record);
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.close() == bam::Status.Ok);
+// assert(writer.close() == bam::Status.Ok);
 // ```
 fn close(writer: Writer&) -> bam::Status {
     let previous = writer.status;
-    if previous != bam::Status.Record && previous != bam::Status.Closed { writer.stream.status = bgzf::Status.Invalid; }
+    if previous != bam::Status.Ok && previous != bam::Status.Closed { writer.stream.status = bgzf::Status.Invalid; }
     let result = bam::from_bgzf(writer.stream.close());
     writer.status = bam::Status.Closed;
-    if previous != bam::Status.Record && previous != bam::Status.Closed { return previous; }
+    if previous != bam::Status.Ok && previous != bam::Status.Closed { return previous; }
     result
 }
 
@@ -67,7 +67,7 @@ fn word(writer: Writer&, value: u32) -> bam::Status {
 fn open(writer: Writer&, path: const u8[:], header: const u8[:],
         references: const bam::Reference[:], names: const u8[:], level: i32 = 6) -> bam::Status {
     let previous = writer.close();
-    if previous != bam::Status.Record { return previous; }
+    if previous != bam::Status.Ok { return previous; }
     writer.references = references.len;
     if header.len > 16777216 || names.len > 16777216 || references.len > 1048576 {
         writer.status = bam::Status.TooLarge; return writer.status;
@@ -82,7 +82,7 @@ fn open(writer: Writer&, path: const u8[:], header: const u8[:],
         }
     }
     writer.status = bam::from_bgzf(writer.stream.open(path, level));
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.bytes("BAM\x01");
     writer.word(header.len as u32);
     writer.bytes(header);
@@ -104,13 +104,13 @@ fn open(writer: Writer&, path: const u8[:], header: const u8[:],
 // let writer = bam_writer::Writer { .. };
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(writer.write(record) == bam::Status.Closed);
 // ```
 fn write(writer: Writer&, record: const bam::Record&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     let f = record.fields;
     if f.tid < -1 || f.tid >= writer.references || f.mate_tid < -1 || f.mate_tid >= writer.references {
         writer.status = bam::Status.Invalid; return writer.status;
@@ -124,7 +124,7 @@ fn payload(writer: Writer&, data: const u8[:]) -> bam::Status {
     }
     if data.len < 32 { writer.status = bam::Status.Invalid; return writer.status; }
     writer.status = bam::from_bgzf(writer.stream.reserve_record(data.len + 4));
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.word(data.len as u32);
     writer.bytes(data)
 }
@@ -138,9 +138,9 @@ fn payload(writer: Writer&, data: const u8[:]) -> bam::Status {
 // assert(writer.write(alignment) == bam::Status.Closed);
 // ```
 fn write(writer: Writer&, alignment: const bam_encode::Alignment&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.status = bam_encode::encode(alignment, writer.buffer, writer.references, writer.max_record_bytes);
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.payload(writer.buffer)
 }
 
@@ -152,21 +152,21 @@ fn write(writer: Writer&, alignment: const bam_encode::Alignment&) -> bam::Statu
 // let writer = bam_writer::Writer { .. };
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(writer.write(record) == bam::Status.Closed);
 // ```
 fn write(writer: Writer&, record: const pileup::Record&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     let f = record.fields;
     let alignment = bam_encode::Alignment { name: record.name_bytes, tid: f.tid, pos: f.pos,
         flags: f.flags, mapq: f.mapq, mate_tid: f.mate_tid, mate_pos: f.mate_pos,
         template_len: f.template_len, cigar: record.cigar_words, sequence: record.bases,
         qualities: record.quality_bytes, aux: record.aux_bytes };
     writer.status = bam_encode::encode_body(alignment, writer.buffer, writer.references, writer.max_record_bytes, bam_encode::SequenceEncoding.Codes);
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.payload(writer.buffer)
 }
 

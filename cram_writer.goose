@@ -27,7 +27,7 @@ struct TagLine { begin: i64, length: i64 }
 //
 // ```goose
 // let writer = cram_writer::Writer { .. };
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.close() == bam::Status.Ok);
 // ```
 root struct Writer {
     output: io::BufferedWriter = io::BufferedWriter { file: io::FileHandle { fd: -1 }, used: 0, buffer: [] },
@@ -121,7 +121,7 @@ fn container_header(writer: Writer&, tid: i64, start: i64, count: i64, counter: 
 }
 
 fn send(writer: Writer&) {
-    if writer.status != bam::Status.Record { return; }
+    if writer.status != bam::Status.Ok { return; }
     if io::write(writer.output, writer.header) != writer.header.len ||
        io::write(writer.output, writer.container) != writer.container.len { writer.status = bam::Status.IoError; }
 }
@@ -140,7 +140,7 @@ fn reset_slice(writer: Writer&) {
 // assert(writer.flush() == bam::Status.Closed);
 // ```
 fn flush(writer: Writer&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     if writer.records > 0 {
         writer.container.clear(); writer.header.clear(); writer.section.clear();
         // Five preservation keys: names retained, absolute positions, no reference.
@@ -174,7 +174,7 @@ fn flush(writer: Writer&) -> bam::Status {
         writer.send();
         writer.counter += writer.records; writer.reset_slice();
     }
-    if writer.status == bam::Status.Record && !io::flush(writer.output) { writer.status = bam::Status.IoError; }
+    if writer.status == bam::Status.Ok && !io::flush(writer.output) { writer.status = bam::Status.IoError; }
     writer.status
 }
 
@@ -183,22 +183,22 @@ fn flush(writer: Writer&) -> bam::Status {
 //
 // ```goose
 // let writer = cram_writer::Writer { .. };
-// assert(writer.close() == bam::Status.Record);
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.close() == bam::Status.Ok);
+// assert(writer.close() == bam::Status.Ok);
 // ```
 fn close(writer: Writer&) -> bam::Status {
-    if writer.status == bam::Status.Record {
+    if writer.status == bam::Status.Ok {
         writer.flush();
-        if writer.status == bam::Status.Record {
+        if writer.status == bam::Status.Ok {
             writer.container.clear(); writer.encode_block(1, 0, "\x01\x00\x01\x00\x01\x00", false);
             writer.container_header(-1, 0x454f46, 0, 0, 0, 1, -1); writer.send();
         }
     }
     var result = writer.status;
-    if result != bam::Status.Record { writer.output.used = 0; }
-    if !io::close(writer.output) && result == bam::Status.Record { result = bam::Status.IoError; }
+    if result != bam::Status.Ok { writer.output.used = 0; }
+    if !io::close(writer.output) && result == bam::Status.Ok { result = bam::Status.IoError; }
     writer.encoder.close(); writer.status = bam::Status.Closed; writer.reset_slice();
-    if result == bam::Status.Closed { bam::Status.Record } else { result }
+    if result == bam::Status.Closed { bam::Status.Ok } else { result }
 }
 
 // Create/truncate CRAM, writing the definition and SAM-header container eagerly.
@@ -207,35 +207,35 @@ fn close(writer: Writer&) -> bam::Status {
 //
 // ```goose
 // let reader = bam::Reader { .. }; defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let writer = cram_writer::Writer { .. }; defer writer.close();
 // let path = "tests/data/writer.cram"; defer delete_file(path);
-// assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Record);
+// assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
-// assert(writer.write(record) == bam::Status.Record);
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.write(record) == bam::Status.Ok);
+// assert(writer.close() == bam::Status.Ok);
 // let input = cram::Reader { .. }; defer input.close();
 // let reference = ExampleReference {};
-// assert(input.open(path) == bam::Status.Record && input.read(reference) == bam::Status.Record);
+// assert(input.open(path) == bam::Status.Ok && input.read(reference) == bam::Status.Record);
 // let decoded = input.record();
 // assert(decoded.name() == "match");
 // ```
 fn open(writer: Writer&, path: const u8[:], header: const u8[:], refs: const bam::Reference[:], names: const u8[:], level: i32 = 6, minor_version: i32 = 1) -> bam::Status {
-    let previous = writer.close(); if previous != bam::Status.Record { return previous; }
+    let previous = writer.close(); if previous != bam::Status.Ok { return previous; }
     writer.status = bam::Status.Invalid;
     if level < 0 || level > 12 || minor_version < 0 || minor_version > 1 || writer.records_per_slice < 1 ||
        writer.records_per_slice > 2147483647 || writer.max_slice_bytes < 1 || writer.max_slice_bytes > 268435456 ||
        writer.max_record_bytes < 1 || writer.max_record_bytes > writer.max_slice_bytes { return writer.status; }
     writer.status = sam_writer::header_text(header, refs, names, writer.section);
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     var parsed: bam::Reference[>..] = []; var parsed_names: u8[>..] = [];
     var at = 0;
     while at < writer.section.len {
         var end = at; while end < writer.section.len && writer.section[end] != '\n' { end += 1; }
         let line_end = if end > at && writer.section[end - 1] == '\r' { end - 1 } else { end };
         writer.status = sam::parse_header_line(writer.section[at..line_end], parsed, parsed_names, 1048576);
-        if writer.status != bam::Status.Record { return writer.status; }
+        if writer.status != bam::Status.Ok { return writer.status; }
         at = end + 1;
     }
     if parsed.len != refs.len { writer.status = bam::Status.Invalid; return writer.status; }
@@ -285,7 +285,7 @@ fn encode_tags<T>(writer: Writer&, record: const T&) -> bam::Status {
         writer.dictionary.append(writer.tag_line);
     }
     writer.put(Key.TL, line);
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 // Encode a validated BAM/slab record. CIGAR =/X normalize to M and adjacent
@@ -300,7 +300,7 @@ fn encode_tags<T>(writer: Writer&, record: const T&) -> bam::Status {
 // assert(writer.write(alignment) == bam::Status.Closed);
 // ```
 fn write<T>(writer: Writer&, record: const T&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     let f = record.fields;
     let mapped = f.flags & 4 == 0;
     if f.tid < -1 || f.tid >= writer.references || f.mate_tid < -1 || f.mate_tid >= writer.references ||
@@ -331,7 +331,7 @@ fn write<T>(writer: Writer&, record: const T&) -> bam::Status {
         writer.status = bam::Status.TooLarge; return writer.status;
     }
     if writer.records > 0 && (writer.records >= writer.records_per_slice || estimate > writer.max_slice_bytes - writer.pending_bytes) {
-        writer.flush(); if writer.status != bam::Status.Record { return writer.status; }
+        writer.flush(); if writer.status != bam::Status.Ok { return writer.status; }
     }
     writer.sequence.clear(); sam_writer::sequence(record, writer.sequence);
     if f.seq_len == 0 { writer.sequence.resize(length, 'N'); }
@@ -340,7 +340,7 @@ fn write<T>(writer: Writer&, record: const T&) -> bam::Status {
     writer.rn.append(record.name()); writer.rn.push(0);
     writer.put(Key.MF, (if f.flags & 32 != 0 { 1 } else { 0 }) | (if f.flags & 8 != 0 { 2 } else { 0 }));
     writer.put(Key.NS, f.mate_tid); writer.put(Key.NP, f.mate_pos + 1); writer.put(Key.TS, f.template_len);
-    writer.status = writer.encode_tags(record); if writer.status != bam::Status.Record { return writer.status; }
+    writer.status = writer.encode_tags(record); if writer.status != bam::Status.Ok { return writer.status; }
     if mapped {
         writer.put(Key.FN, features);
         var pos = 0; var previous = 0;
@@ -372,9 +372,9 @@ fn write<T>(writer: Writer&, record: const T&) -> bam::Status {
 // assert(writer.write(alignment) == bam::Status.Closed);
 // ```
 fn write(writer: Writer&, alignment: const bam_encode::Alignment&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.status = bam_encode::encode(alignment, writer.payload, writer.references, writer.max_record_bytes);
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     let fields, ok = bam::decode(writer.payload, writer.references);
     if !ok { writer.status = bam::Status.Invalid; return writer.status; }
     let record = bam::Record { fields: fields, bytes: writer.payload }; writer.write(record)

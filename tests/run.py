@@ -49,17 +49,19 @@ def suite(command, directory):
     fixtures = records()
     data = header() + b"".join(r for r, _ in fixtures)
     expected = expected_header + [e for _, e in fixtures] + ["S\tEnd"]
-    assert invoke("unused", "check-api") == ["S\tRecord"]
+    assert invoke("unused", "check-api") == ["S\tOk"]
     for mode, message in (("check-abort", "BAM status mismatch: expected Record, got End"),
-                          ("check-abort-message", "Failed to open BAM file: expected Record, got IoError")):
+                          ("check-abort-ok", "BAM status mismatch: expected Ok, got Record"),
+                          ("check-abort-record", "BAM status mismatch: expected Record, got Ok"),
+                          ("check-abort-message", "Failed to open BAM file: expected Ok, got IoError")):
         result = subprocess.run([*map(str, command), mode, "unused"], cwd=ROOT, text=True, capture_output=True)
         assert result.returncode != 0 and message in result.stdout + result.stderr, result
     for chunk in (1, 17, 65536):
         path = write(f"split-{chunk}.bam", bgzf(data, chunk, empty=True, extra=b"XY\x03\x00abc"))
         assert invoke(path) == expected, f"BGZF split {chunk}"
         assert invoke(path, "seek") == [e for _, e in reversed(fixtures)] + ["S\tRecord"]
-        assert invoke(path, "records") == [e for _, e in fixtures] + ["S\tRecord"]
-        assert invoke(path, "records-first") == [e for _, e in fixtures[1:]] + ["S\tRecord"]
+        assert invoke(path, "records") == [e for _, e in fixtures] + ["S\tOk"]
+        assert invoke(path, "records-first") == [e for _, e in fixtures[1:]] + ["S\tOk"]
     # Switch between borrowed block records and cross-block scratch, including
     # a split length word, a body ending exactly at the boundary, and a body
     # missing only its final byte. Seeking backward must make the same switch.
@@ -74,12 +76,12 @@ def suite(command, directory):
     assert invoke(write("empty.bam", bgzf(header()))) == expected_header + ["S\tEnd"]
     assert invoke(directory / "missing.bam") == ["S\tIoError"]
     assert invoke(directory / "missing.bam", "records") == ["S\tIoError"]
-    assert invoke(directory / "empty.bam", "records") == ["S\tRecord"]
+    assert invoke(directory / "empty.bam", "records") == ["S\tOk"]
     assert invoke(write("records-truncated.bam", bgzf(header() + fixtures[0][0] + fixtures[1][0][:-1])),
                   "records") == [fixtures[0][1], "S\tTruncated"]
     assert invoke(path, "limit")[-1] == "S\tTooLarge"
     assert invoke(path, "budget", "chrA", 0, 100, 0)[-1] == "S\tTooLarge"
-    assert invoke(path, "pileup", "chrA", 20, 20, 0) == ["S\tRecord"]
+    assert invoke(path, "pileup", "chrA", 20, 20, 0) == ["S\tOk"]
     assert invoke(path, "pileup", "missing", 0, 10, 0) == ["S\tInvalid"]
     assert invoke(path, "pileup", "chrA", -1, 10, 0) == ["S\tInvalid"]
     assert invoke(path, "pileup", "chrA", 0, 200001, 0) == ["S\tInvalid"]
@@ -115,18 +117,18 @@ def suite(command, directory):
     output = directory / "written.bam"
     for source in sources:
         for level in (0, 1, 6, 12):
-            assert invoke(source, "write", output, level) == ["S\tRecord"]
+            assert invoke(source, "write", output, level) == ["S\tOk"]
             check_bgzf(output)
             assert gzip.decompress(output.read_bytes()) == gzip.decompress(source.read_bytes())
             with pysam.AlignmentFile(source) as left, pysam.AlignmentFile(output) as right:
                 assert [r.to_string() for r in left] == [r.to_string() for r in right]
     for source in (large, sources[2]):
-        assert invoke(source, "write-store", output, 6) == ["S\tRecord"]
+        assert invoke(source, "write-store", output, 6) == ["S\tOk"]
         check_bgzf(output)
         assert invoke(output) == invoke(source)
         pysam.index(str(output))
         with pysam.AlignmentFile(output) as f: assert len(list(f.fetch("chrA"))) == 1
-    assert invoke(sources[0], "write-new", output, 0) == ["S\tRecord"]
+    assert invoke(sources[0], "write-new", output, 0) == ["S\tOk"]
     check_bgzf(output)
     with pysam.AlignmentFile(output) as f:
         a, b = list(f)
@@ -207,14 +209,14 @@ def suite(command, directory):
     odd = record("odd", 3, [("S", 1), ("M", 13), ("I", 1)], seq="NBDKHYWTGVSRCMA",
                  flags=16, missing_qual=True)
     stored = write("stored.bam", bgzf(header() + even[0] + odd[0], 17))
-    assert invoke(stored, "store", "chrA", 0, 100, 0) == [even[1], odd[1], "S\tRecord"]
-    assert invoke(large, "store", "chrA", 1, 2, 0) == [long_expected, "S\tRecord"]
+    assert invoke(stored, "store", "chrA", 0, 100, 0) == [even[1], odd[1], "S\tOk"]
+    assert invoke(large, "store", "chrA", 1, 2, 0) == [long_expected, "S\tOk"]
     # Budget is name + decoded sequence + qualities + CIGAR words + raw aux.
     # The first record needs 4+16+16+4+7=47 bytes; both need 47+3+15+15+12=92.
     assert invoke(stored, "store", "chrA", 2, 3, 0, 46) == ["S\tTooLarge"]
-    assert invoke(stored, "store", "chrA", 2, 3, 0, 47) == [even[1], "S\tRecord"]
+    assert invoke(stored, "store", "chrA", 2, 3, 0, 47) == [even[1], "S\tOk"]
     assert invoke(stored, "store", "chrA", 0, 100, 0, 91) == ["S\tTooLarge"]
-    assert invoke(stored, "store", "chrA", 0, 100, 0, 92) == [even[1], odd[1], "S\tRecord"]
+    assert invoke(stored, "store", "chrA", 0, 100, 0, 92) == [even[1], odd[1], "S\tOk"]
 
     # A region's decoded payload can exceed 256 MiB even though each record
     # is small enough. Keep the fixture compressed and emit only pileup rows.
@@ -229,7 +231,7 @@ def suite(command, directory):
             out.write(read)
     expected = sorted(f"2\tpayload-{i}\t0\t0\t0\t65\t30" for i in range(257))
     actual = invoke(dense, "pileup", "chrA", 2, 3, 0)
-    assert actual[-1] == "S\tRecord" and sorted(actual[:-1]) == expected
+    assert actual[-1] == "S\tOk" and sorted(actual[:-1]) == expected
 
     # Every IUPAC code, asymmetric SIMD lanes, odd tails, and nonzero slab
     # offsets. A lane swap or treating the final low nibble as a base must fail.
@@ -238,7 +240,7 @@ def suite(command, directory):
         seq = "".join("=ACMGRSVTWYHKDBN"[(j * 7 + j // 16 + i) % 16] for j in range(n))
         tails.append(record(f"tail{i}", i, [("M", n)], seq=seq))
     path = write("tails.bam", bgzf(header() + b"".join(r for r, _ in tails), 83))
-    assert invoke(path, "store", "chrA", 0, 1000, 0) == [e for _, e in tails] + ["S\tRecord"]
+    assert invoke(path, "store", "chrA", 0, 1000, 0) == [e for _, e in tails] + ["S\tOk"]
 
     # Every truncated prefix of a complete compressed header block is an error.
     encoded_header = block(header())
@@ -290,7 +292,7 @@ def suite(command, directory):
                 if valid and begin < end:
                     fetched.extend(by_name[r.query_name] for r in reader.fetch(contig, begin, end))
                     columns.extend(oracle(path, begin, end, 0x704, contig=contig))
-                status = "S\tRecord" if valid else "S\tInvalid"
+                status = "S\tOk" if valid else "S\tInvalid"
                 fetched.append(status); columns.append(status)
         args = [v for query in queries for v in query]
         for suffix in indexes:
@@ -300,6 +302,22 @@ def suite(command, directory):
                 assert invoke(path, mode, str(path) + suffix, *args) == columns, (path, mode, suffix)
         for mode in ("columns-scan", "columns-scan-tid"):
             assert invoke(path, mode, "-", *args) == columns, (path, mode)
+
+    # A final alignment is still Record; only the following read is End.
+    # Whole-operation helpers return Ok, including empty indexes/queries.
+    single = write("single.bam", bgzf(header() + fixtures[0][0]))
+    assert invoke(single) == expected_header + [fixtures[0][1], "S\tEnd"]
+    assert invoke(single, "seek") == [fixtures[0][1], "S\tRecord"]
+    assert invoke(single, "records") == [fixtures[0][1], "S\tOk"]
+    assert invoke(single, "records-first") == ["S\tOk"]
+    for source, alignments in ((single, fixtures[:1]), (directory / "empty.bam", [])):
+        pysam.index(str(source)); pysam.index("-c", str(source))
+        helper_queries(source, alignments, [("chrA", 0, 100), ("chrA", 7, 7),
+                                            ("chrB", 0, 10), ("chrA", 0, 100)])
+    for suffix in (".bai", ".csi"):
+        assert invoke(single, "fetch-tail", str(single) + suffix,
+                      "chrA", 0, 100, "chrA", 0, 100) == [
+                          "Q\tchrA\t0\t100", fixtures[0][1], "S\tOk"] * 2
 
     # Compare individual records, qpos, base, quality, D/N and anchored indels,
     # not only depth. Window boundaries cut through reads and CIGAR operations.
@@ -315,22 +333,22 @@ def suite(command, directory):
         for begin, end in [(0, 150), (11, 18), (18, 19), (75, 100)]:
             for mask, min_mapq in ((0, 0), (0x704, 0), (0x704, 20), (0, 42)):
                 actual = invoke(path, "pileup", "chrA", begin, end, mask, min_mapq)
-                assert actual[-1] == "S\tRecord"
+                assert actual[-1] == "S\tOk"
                 expected = oracle(path, begin, end, mask, min_mapq)
                 assert actual[:-1] == expected, (name, begin, end, mask,
                     next(((a, b) for a, b in zip(actual, expected) if a != b), (len(actual)-1, len(expected))))
-                assert invoke(text_path, "sam-pileup", "chrA", begin, end, mask, min_mapq) == expected + ["S\tRecord"]
+                assert invoke(text_path, "sam-pileup", "chrA", begin, end, mask, min_mapq) == expected + ["S\tOk"]
                 for suffix in (".bai", ".csi"):
                     assert invoke(path, "indexed", "chrA", begin, end, mask, min_mapq,
-                                  str(path) + suffix) == expected + ["S\tRecord"], (name, suffix, begin, end)
+                                  str(path) + suffix) == expected + ["S\tOk"], (name, suffix, begin, end)
                 comparisons += 1
     second, second_expected = record("second_ref", 2, [("M", 4)], tid=1)
     unmapped, unmapped_expected = record("unmapped", -1, [], seq="ACG", tid=-1, flags=4)
     path = write("multiref.bam", bgzf(header() + fixtures[0][0] + second + unmapped))
     assert invoke(path) == expected_header + [fixtures[0][1], second_expected, unmapped_expected, "S\tEnd"]
     pysam.index(str(path))
-    assert invoke(path, "pileup", "chrB", 0, 10, 0) == oracle(path, 0, 10, 0, contig="chrB") + ["S\tRecord"]
-    assert invoke(path, "indexed", "chrB", 0, 10, 0, 0, str(path) + ".bai") == oracle(path, 0, 10, 0, contig="chrB") + ["S\tRecord"]
+    assert invoke(path, "pileup", "chrB", 0, 10, 0) == oracle(path, 0, 10, 0, contig="chrB") + ["S\tOk"]
+    assert invoke(path, "indexed", "chrB", 0, 10, 0, 0, str(path) + ".bai") == oracle(path, 0, 10, 0, contig="chrB") + ["S\tOk"]
     helper_queries(path, [fixtures[0], (second, second_expected), (unmapped, unmapped_expected)],
                    [("chrB", 0, 10), ("chrA", 5, 18)], indexes=(".bai",))
 
@@ -346,8 +364,8 @@ def suite(command, directory):
     assert invoke(discovered, "open-for", saved) == ["S\tIoError"]
     for candidate in candidates:
         candidate.write_bytes(csi if candidate.suffix == ".csi" else bai)
-        assert invoke(discovered, "open-for") == ["S\tRecord"]
-        assert invoke(discovered, "fetch", "-", "chrA", 5, 7) == ["Q\tchrA\t5\t7", fixtures[0][1], "S\tRecord"]
+        assert invoke(discovered, "open-for") == ["S\tOk"]
+        assert invoke(discovered, "fetch", "-", "chrA", 5, 7) == ["Q\tchrA\t5\t7", fixtures[0][1], "S\tOk"]
         candidate.unlink()
     for i, candidate in enumerate(candidates[:-1]):
         for fallback in candidates[i + 1:]: fallback.write_bytes(bai if fallback.suffix == ".bai" else csi)
@@ -364,7 +382,7 @@ def suite(command, directory):
     helper_queries(path, spanning, [("chrA", 179999, 180006), ("chrA", 16383, 16385),
                                     ("chrA", 65535, 65538), ("chrA", 2, 3)])
     for begin, end in ((16383, 16385), (65535, 65538), (131071, 131075), (179999, 180006), (2, 3), (190000, 190010), (8, 8)):
-        expected = oracle(path, begin, end, 0) + ["S\tRecord"] if begin != end else ["S\tRecord"]
+        expected = oracle(path, begin, end, 0) + ["S\tOk"] if begin != end else ["S\tOk"]
         for suffix in (".bai", ".csi"):
             assert invoke(path, "indexed", "chrA", begin, end, 0, 0, str(path) + suffix) == expected
 
@@ -376,18 +394,18 @@ def suite(command, directory):
         len(header()), len(raw), len(header()), len(raw), 37450, 2,
         len(header()), len(raw), 2, 0, 1, len(header()), 0, 0))
     index = write("root.bai", index_bytes)
-    assert invoke(path, "indexed-store", "chrA", 5, 18, 0, 0, index) == [fixtures[0][1], fixtures[1][1], "S\tRecord"]
-    assert invoke(path, "fetch", index, "chrA", 5, 18) == ["Q\tchrA\t5\t18", fixtures[0][1], fixtures[1][1], "S\tRecord"]
+    assert invoke(path, "indexed-store", "chrA", 5, 18, 0, 0, index) == [fixtures[0][1], fixtures[1][1], "S\tOk"]
+    assert invoke(path, "fetch", index, "chrA", 5, 18) == ["Q\tchrA\t5\t18", fixtures[0][1], fixtures[1][1], "S\tOk"]
     assert invoke(unsorted, "fetch", index, "chrA", 0, 100)[-1] == "S\tUnsorted"
-    assert invoke(index, "index", len(index_bytes)) == ["S\tRecord"]
+    assert invoke(index, "index", len(index_bytes)) == ["S\tOk"]
     assert invoke(index, "index", len(index_bytes) - 1) == ["S\tTooLarge"]
-    assert invoke(write("compressed.bai", bgzf(index_bytes, 17)), "index") == ["S\tRecord"]
+    assert invoke(write("compressed.bai", bgzf(index_bytes, 17)), "index") == ["S\tOk"]
     for cut in range(len(index_bytes)):
-        assert invoke(write("cut.bai", index_bytes[:cut]), "index")[-1] != "S\tRecord", cut
+        assert invoke(write("cut.bai", index_bytes[:cut]), "index")[-1] not in ("S\tOk", "S\tRecord", "S\tEnd"), cut
     for bad in (b"BAI\x01" + struct.pack("<i", -1), b"CSI\x01" + struct.pack("<iii", 63, 5, 0),
                 b"CSI\x01" + struct.pack("<iii", 14, -1, 0), b"CSI\x01" + struct.pack("<iii", 0, 11, 0),
                 b"BAI\x01" + struct.pack("<iiiiQQ", 1, 1, 0, 1, 200, 100)):
-        assert invoke(write("bad.idx", bad), "index")[-1] != "S\tRecord"
+        assert invoke(write("bad.idx", bad), "index")[-1] not in ("S\tOk", "S\tRecord", "S\tEnd")
     for begin, end in ((-1, 5), (10, 9), (0, 200001)):
         assert invoke(path, "indexed", "chrA", begin, end, 0, 0, index) == ["S\tInvalid"]
 
@@ -401,8 +419,8 @@ def suite(command, directory):
                                                           len(header()), len(raw), 0, 0, 0))
     assert invoke(path)[-1] == "S\tInvalid"
     assert invoke(path, "indexed-store", "chrA", 2, 3, 0, 0, index) == ["S\tInvalid"]
-    assert invoke(path, "indexed-store", "chrA", 3, 4, 0, 0, index) == ["S\tRecord"]
-    assert invoke(path, "indexed-store", "chrA", 100, 105, 0, 0, index) == [good_expected, "S\tRecord"]
+    assert invoke(path, "indexed-store", "chrA", 3, 4, 0, 0, index) == ["S\tOk"]
+    assert invoke(path, "indexed-store", "chrA", 100, 105, 0, 0, index) == [good_expected, "S\tOk"]
 
     # An index must really skip a prefix, not just wrap the sequential loader.
     # Keep the header valid, corrupt an irrelevant block, and index a later one.
@@ -415,8 +433,8 @@ def suite(command, directory):
     index = write("skip-prefix.bai", b"BAI\x01" + struct.pack("<iiiiQQiii", 2, 1, 0, 1,
         start << 16, (start + len(late_block)) << 16, 0, 0, 0))
     assert invoke(path)[-1] == "S\tInvalid"
-    assert invoke(path, "indexed-store", "chrA", 100000, 100005, 0, 0, index) == [late_expected, "S\tRecord"]
-    assert invoke(path, "fetch", index, "chrA", 100000, 100005) == ["Q\tchrA\t100000\t100005", late_expected, "S\tRecord"]
+    assert invoke(path, "indexed-store", "chrA", 100000, 100005, 0, 0, index) == [late_expected, "S\tOk"]
+    assert invoke(path, "fetch", index, "chrA", 100000, 100005) == ["Q\tchrA\t100000\t100005", late_expected, "S\tOk"]
     # Nonexistent blocks and out-of-block uncompressed offsets must fail.
     for offset in ((start << 16) | 65535, (len(prefix + corrupt + late_block) + 1000) << 16):
         bad = write("bad-offset.bai", b"BAI\x01" + struct.pack("<iiiiQQiii", 2, 1, 0, 1, offset, offset + 1, 0, 0, 0))
@@ -430,12 +448,12 @@ def suite(command, directory):
     csi = Path(str(path) + ".csi")
     raw_csi = write("raw.csi", gzip.decompress(csi.read_bytes()))
     for index in (csi, raw_csi):
-        assert invoke(path, "indexed-store", "chrA", 600000003, 600000005, 0, 0, index) == [high_expected, "S\tRecord"]
-        assert invoke(path, "fetch", index, "chrA", 600000003, 600000005) == ["Q\tchrA\t600000003\t600000005", high_expected, "S\tRecord"]
+        assert invoke(path, "indexed-store", "chrA", 600000003, 600000005, 0, 0, index) == [high_expected, "S\tOk"]
+        assert invoke(path, "fetch", index, "chrA", 600000003, 600000005) == ["Q\tchrA\t600000003\t600000005", high_expected, "S\tOk"]
     for cut in range(len(raw_csi.read_bytes())):
         # CSI's optional final eight-byte count may be absent, but not partial.
         if cut == len(raw_csi.read_bytes()) - 8: continue
-        assert invoke(write("cut.csi", raw_csi.read_bytes()[:cut]), "index")[-1] != "S\tRecord", cut
+        assert invoke(write("cut.csi", raw_csi.read_bytes()[:cut]), "index")[-1] not in ("S\tOk", "S\tRecord", "S\tEnd"), cut
 
     # Mate links are store indexes, not qname matching in each column. READ1/
     # READ2 bits do not determine eligibility in Seqair. A third primary is
@@ -452,14 +470,14 @@ def suite(command, directory):
     pairs += [record(f"excluded{i}", 50, [("M", 20)], flags=129, mate_tid=0, mate_pos=20 + i) for i in range(6)]
     path = write("mates.bam", bgzf(header() + b"".join(r for r, _ in pairs), 97))
     links = [1, 0, -1, 4, 3] + [-1] * (len(pairs) - 5)
-    expected = ["M\t2\t1"] + [f"{i}\t{mate}" for i, mate in enumerate(links)] + ["S\tRecord"]
+    expected = ["M\t2\t1"] + [f"{i}\t{mate}" for i, mate in enumerate(links)] + ["S\tOk"]
     assert invoke(path, "mates", "chrA", 0, 100, 0) == expected
     mate_sam = write("mates.sam", pysam.view("-h", "--no-PG", str(path)).encode())
     assert invoke(mate_sam, "sam-mates", "chrA", 0, 100, 0, 0) == expected
     pysam.index(str(path)); pysam.index("-c", str(path))
     for suffix in (".bai", ".csi"):
         assert invoke(path, "indexed-mates", "chrA", 0, 100, 0, 0, str(path) + suffix) == expected
-        assert invoke(path, "indexed-mates", "chrA", 5, 6, 0, 0, str(path) + suffix) == ["M\t0\t0", "0\t-1", "S\tRecord"]
+        assert invoke(path, "indexed-mates", "chrA", 5, 6, 0, 0, str(path) + suffix) == ["M\t0\t0", "0\t-1", "S\tOk"]
     # Opting out changes only auxiliary retention and automatic mate links.
     # The long-CIGAR record must still resolve its operations from the CG tag.
     for source in (path, large, sources[2]):

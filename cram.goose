@@ -82,12 +82,12 @@ fn close(reader: Reader&) {
 
 fn required(reader: Reader&, out: u8[:]) -> bool {
     let status = bam::from_bgzf(reader.input.input_exact(out));
-    if status != bam::Status.Record { reader.status = if status == bam::Status.End { bam::Status.Truncated } else { status }; }
-    status == bam::Status.Record
+    if status != bam::Status.Ok { reader.status = if status == bam::Status.End { bam::Status.Truncated } else { status }; }
+    status == bam::Status.Ok
 }
 
 fn field(reader: Reader&, long: bool = false) -> i64 {
-    if reader.status != bam::Status.Record { return 0; }
+    if reader.status != bam::Status.Ok { return 0; }
     var bytes: u8[9] = [0; 9];
     if !reader.required(bytes[..1]) { return 0; }
     let first = bytes[0];
@@ -103,11 +103,11 @@ fn field(reader: Reader&, long: bool = false) -> i64 {
 }
 
 fn next_container(reader: Reader&) -> bam::Status {
-    if reader.status != bam::Status.Record { return reader.status; }
+    if reader.status != bam::Status.Ok { return reader.status; }
     reader.container.clear(); reader.container_header.clear(); reader.landmarks.clear();
     var word: u8[4] = [0; 4];
     reader.status = bam::from_bgzf(reader.input.input_exact(word));
-    if reader.status != bam::Status.Record { return reader.status; }
+    if reader.status != bam::Status.Ok { return reader.status; }
     reader.container_header.append(word);
     let size = (bgzf::le32(word, 0) as! i32) as i64;
     reader.info.length = size;
@@ -116,7 +116,7 @@ fn next_container(reader: Reader&) -> bam::Status {
     reader.info.records = reader.field(); reader.info.counter = reader.field(true);
     reader.info.bases = reader.field(true); reader.info.blocks = reader.field();
     let n = reader.field();
-    if reader.status != bam::Status.Record { return reader.status; }
+    if reader.status != bam::Status.Ok { return reader.status; }
     if size < 0 || reader.info.tid < -2 || reader.info.records < 0 || reader.info.counter < 0 ||
        reader.info.blocks < 0 || n < 0 { reader.status = bam::Status.Invalid; return reader.status; }
     if size > reader.max_container_bytes || n > reader.max_container_bytes / 4 {
@@ -124,7 +124,7 @@ fn next_container(reader: Reader&) -> bam::Status {
     }
     for i in n {
         let landmark = reader.field();
-        if reader.status != bam::Status.Record { return reader.status; }
+        if reader.status != bam::Status.Ok { return reader.status; }
         if landmark < 0 || landmark >= size || (i > 0 && landmark <= reader.landmarks[i - 1]) {
             reader.status = bam::Status.Invalid; return reader.status;
         }
@@ -186,10 +186,10 @@ fn decode_block(reader: Reader&, c: cram_encoding::Cursor&) -> bam::Status {
         } else { reader.unsupported_method = method as i32; return bam::Status.Invalid; }
     }
     reader.blocks.push(cram_encoding::Block { id: id, kind: kind, begin: begin, size: count, .. });
-    bam::Status.Record
+    bam::Status.Ok
 }
 
-// Open CRAM 3.0/3.1 and decode its SAM header. Record means ready, not a read.
+// Open CRAM 3.0/3.1 and decode its SAM header. Ok means ready, not a read.
 // Validates container/block CRCs. Older CRAM versions return Invalid. Bzip2
 // and XZ blocks require system libbz2/liblzma; missing codecs return Invalid
 // with unsupported_method set. No reference is fetched during header parsing.
@@ -208,9 +208,9 @@ fn open(reader: Reader&, path: const u8[:]) -> bam::Status {
     reader.prefix.append(path[basename..]);
     reader.unsupported_method = -1;
     reader.status = bam::from_bgzf(reader.input.open(path));
-    if reader.status != bam::Status.Record { return reader.status; }
+    if reader.status != bam::Status.Ok { return reader.status; }
     reader.status = reader.open_header();
-    if reader.status != bam::Status.Record { reader.input.close(); }
+    if reader.status != bam::Status.Ok { reader.input.close(); }
     reader.status
 }
 
@@ -218,12 +218,12 @@ fn open_header(reader: Reader&) -> bam::Status {
     var definition: u8[26] = [0; 26];
     if !reader.required(definition) { return reader.status; }
     if definition[..4] != "CRAM" || definition[4] != 3 || definition[5] > 1 { return bam::Status.Invalid; }
-    if reader.next_container() != bam::Status.Record {
+    if reader.next_container() != bam::Status.Ok {
         return if reader.status == bam::Status.End { bam::Status.Truncated } else { reader.status };
     }
     let c = cram_encoding::Cursor { bytes: reader.container };
     let status = reader.decode_block(c);
-    if status != bam::Status.Record { return status; }
+    if status != bam::Status.Ok { return status; }
     let b = reader.blocks[0];
     if b.kind != 0 || b.size < 4 { return bam::Status.Invalid; }
     let text_size = (bgzf::le32(reader.decoded, b.begin) as! i32) as i64;
@@ -237,7 +237,7 @@ fn open_header(reader: Reader&) -> bam::Status {
         let next = end + 1;
         if end > at && reader.header[end - 1] == '\r' { end -= 1; }
         let parsed = sam::parse_header_line(reader.header[at..end], reader.references, reader.names, reader.max_references);
-        if parsed != bam::Status.Record { return parsed; }
+        if parsed != bam::Status.Ok { return parsed; }
         let line = reader.header[at..end];
         if line.len >= 4 && line[..4] == "@RG\t" {
             bstr::split_str(line[4..], "\t") { field =>
@@ -250,7 +250,7 @@ fn open_header(reader: Reader&) -> bam::Status {
         at = next;
     }
     reader.landmarks.clear();
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 fn clear_slice(reader: Reader&) {
@@ -267,19 +267,19 @@ fn output(reader: Reader&) -> cram_slice::Output {
 
 fn prepare_container(reader: Reader&) -> bam::Status {
     reader.container_offset = -1;
-    if reader.next_container() != bam::Status.Record { return reader.status; }
+    if reader.next_container() != bam::Status.Ok { return reader.status; }
     reader.decoded.clear(); reader.blocks.clear(); reader.encodings.clear(); reader.symbols.clear();
     reader.tags.clear(); reader.tag_uses.clear(); reader.tag_lines.clear(); reader.next_slice = 0;
     let c = cram_encoding::Cursor { bytes: reader.container };
     let status = reader.decode_block(c);
-    if status != bam::Status.Record { return status; }
+    if status != bam::Status.Ok { return status; }
     let b = reader.blocks[0];
     if b.kind != 1 || (reader.landmarks.len > 0 && c.at > reader.landmarks[0]) { return bam::Status.Invalid; }
     let table = cram_encoding::Table { encodings: reader.encodings, symbols: reader.symbols };
     let header, ok = cram_encoding::compression(reader.decoded[b.begin..b.begin + b.size], table,
         reader.tags, reader.tag_uses, reader.tag_lines);
     reader.compression = header;
-    if ok { bam::Status.Record } else { bam::Status.Invalid }
+    if ok { bam::Status.Ok } else { bam::Status.Invalid }
 }
 
 // Seqair's multi-reference pre-scan consumes all series before fetching one
@@ -318,7 +318,7 @@ fn decode_slice<R>(reader: Reader&, source: R&) -> bam::Status {
     let end = if reader.next_slice + 1 < reader.landmarks.len { reader.landmarks[reader.next_slice + 1] } else { reader.container.len };
     let c = cram_encoding::Cursor { bytes: reader.container[..end], at: at };
     var status = reader.decode_block(c);
-    if status != bam::Status.Record { return status; }
+    if status != bam::Status.Ok { return status; }
     let b = reader.blocks[0];
     if b.kind != 2 { return bam::Status.Invalid; }
     let slice, ok = cram_slice::parse(reader.decoded[b.begin..b.begin + b.size]);
@@ -327,7 +327,7 @@ fn decode_slice<R>(reader: Reader&, source: R&) -> bam::Status {
     }
     for i in slice.blocks {
         status = reader.decode_block(c);
-        if status != bam::Status.Record { return status; }
+        if status != bam::Status.Ok { return status; }
     }
     if c.at != end { return bam::Status.Invalid; }
     var core = -1; var embedded = -1;
@@ -406,7 +406,7 @@ fn decode_slice<R>(reader: Reader&, source: R&) -> bam::Status {
     let out = reader.output();
     if !out.resolve(reader.prefix, slice.counter, !reader.compression.names) { return bam::Status.TooLarge; }
     reader.next_slice += 1;
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 // Seek to and decode one CRAI slice. container_offset is an absolute file byte
@@ -414,6 +414,7 @@ fn decode_slice<R>(reader: Reader&, source: R&) -> bam::Status {
 // match the landmark span. Header/reference metadata survives; borrowed records
 // do not. Reuses the compressed container when adjacent queries share it.
 // source has the same contract as read. Use cram_index::Cursor for region reads.
+// Returns Ok when the slice is ready; call read() before borrowing a record.
 //
 // ```goose
 // let reader = cram::Reader { .. }; let source = ExampleReference { .. };
@@ -423,15 +424,16 @@ fn seek_slice<R>(reader: Reader&, container_offset: i64, slice_offset: i64, size
     reader.bytes.clear(); reader.clear_slice();
     if reader.input.input.fd < 0 { return bam::Status.Closed; }
     if container_offset < 26 || slice_offset < 0 || size <= 0 { reader.status = bam::Status.Invalid; return reader.status; }
-    if reader.container_offset != container_offset || reader.status != bam::Status.Record {
+    if reader.status == bam::Status.Record { reader.status = bam::Status.Ok; }
+    if reader.container_offset != container_offset || reader.status != bam::Status.Ok {
         reader.container_offset = -1;
         if bgzf::seek_raw(reader.input.input.fd, container_offset) != container_offset {
             reader.status = bam::Status.IoError; return reader.status;
         }
         reader.input.input_begin = 0; reader.input.input_end = 0;
-        reader.input.status = bgzf::Status.Ready; reader.status = bam::Status.Record;
+        reader.input.status = bgzf::Status.Ready; reader.status = bam::Status.Ok;
         reader.status = reader.prepare_container();
-        if reader.status != bam::Status.Record { return reader.status; }
+        if reader.status != bam::Status.Ok { return reader.status; }
         reader.container_offset = container_offset;
     }
     var slice: i64 = -1;
@@ -441,7 +443,7 @@ fn seek_slice<R>(reader: Reader&, container_offset: i64, slice_offset: i64, size
     if size != end - slice_offset { reader.status = bam::Status.Invalid; return reader.status; }
     reader.next_slice = slice;
     reader.status = reader.decode_slice(source);
-    if reader.status != bam::Status.Record { reader.clear_slice(); }
+    if reader.status != bam::Status.Ok { reader.clear_slice(); }
     reader.status
 }
 
@@ -452,6 +454,7 @@ fn seek_slice<R>(reader: Reader&, container_offset: i64, slice_offset: i64, size
 // Reference bases are uppercased and nonzero single-reference MD5s checked.
 // Embedded/no-reference slices bypass source. Fetch failures and checked MD5
 // mismatches fail; multi-reference/zero-MD5 slices cannot verify FASTA identity.
+// Returns Record for a validated alignment, End when exhausted, or a failure.
 //
 // ```goose
 // let reader = cram::Reader { .. };
@@ -459,16 +462,17 @@ fn seek_slice<R>(reader: Reader&, container_offset: i64, slice_offset: i64, size
 // assert(reader.read(source) == bam::Status.Closed);
 // ```
 fn read<R>(reader: Reader&, source: R&) -> bam::Status {
-    if reader.status != bam::Status.Record { return reader.status; }
+    if reader.status == bam::Status.Record { reader.status = bam::Status.Ok; }
+    if reader.status != bam::Status.Ok { return reader.status; }
     reader.bytes.clear();
     while reader.next_record >= reader.slice_records.len {
         if reader.next_slice >= reader.landmarks.len {
             reader.status = reader.prepare_container();
-            if reader.status != bam::Status.Record { return reader.status; }
+            if reader.status != bam::Status.Ok { return reader.status; }
             if reader.landmarks.len == 0 { continue; }
         }
         reader.status = reader.decode_slice(source);
-        if reader.status != bam::Status.Record { reader.clear_slice(); return reader.status; }
+        if reader.status != bam::Status.Ok { reader.clear_slice(); return reader.status; }
     }
     let f = reader.slice_records[reader.next_record];
     let a = bam_encode::Alignment {
@@ -480,10 +484,11 @@ fn read<R>(reader: Reader&, source: R&) -> bam::Status {
         aux: reader.slice_aux[(f.aux as i64)..f.aux as i64 + f.aux_len],
     };
     reader.status = bam_encode::encode_body(a, reader.bytes, reader.references.len, reader.max_record_bytes, bam_encode::SequenceEncoding.Codes);
-    if reader.status != bam::Status.Record { reader.bytes.clear(); return reader.status; }
+    if reader.status != bam::Status.Ok { reader.bytes.clear(); return reader.status; }
     let fields, ok = bam::decode(reader.bytes, reader.references.len);
     if !ok { reader.status = bam::Status.Invalid; reader.bytes.clear(); return reader.status; }
     reader.fields = fields; reader.next_record += 1;
+    reader.status = bam::Status.Record;
     reader.status
 }
 
@@ -509,6 +514,7 @@ fn reference_id(reader: const Reader&, name: const u8[:]) -> i32 { sam::find_ref
 // like the BAM/SAM sequential path. Errors clear the store. On success, the
 // store retains auxiliary tags and links mates unless its retain_auxiliary
 // or auto_link_mates option is false.
+// Returns Ok on success, including empty regions or no overlapping records.
 //
 // ```goose
 // let reader = cram::Reader { .. };
@@ -522,12 +528,13 @@ fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: 
     if tid < 0 || tid >= reader.references.len || begin < 0 || end < begin || end > reader.references[tid as i64].length {
         return bam::Status.Invalid;
     }
-    var status = bam::Status.Record;
+    var status = bam::Status.Ok;
     var last_tid: i32 = -1; var last_pos: i64 = -1;
     while begin != end {
         status = reader.read(source);
-        if status == bam::Status.End { status = bam::Status.Record; break; }
+        if status == bam::Status.End { status = bam::Status.Ok; break; }
         if status != bam::Status.Record { break; }
+        status = bam::Status.Ok;
         let record = reader.record(); let f = record.fields;
         if f.flags & 4 != 0 || f.tid < 0 || f.pos < 0 { continue; }
         if f.tid < last_tid || (f.tid == last_tid && f.pos < last_pos) { status = bam::Status.Unsorted; break; }
@@ -536,9 +543,9 @@ fn load<R>(store: pileup::Store&, reader: Reader&, source: R&, tid: i32, begin: 
         if f.tid != tid || f.end <= begin || f.flags & filter.exclude_flags != 0 ||
            f.mapq < filter.min_mapq || (f.reference_len == 0 && !filter.retain_zero_span) { continue; }
         status = pileup::retain(store, record);
-        if status != bam::Status.Record { break; }
+        if status != bam::Status.Ok { break; }
     }
-    if status != bam::Status.Record {
+    if status != bam::Status.Ok {
         store.clear();
     } else if store.auto_link_mates {
         store.link_mates();

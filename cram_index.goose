@@ -29,7 +29,7 @@ fn read_bytes(path: const u8[:], bytes: u8[>..]&, limit: i64) -> bam::Status {
         let n = io::read(file, buffer); if n < 0 { return bam::Status.IoError; } if n == 0 { break; }
         if n > limit - raw.len { return bam::Status.TooLarge; } raw.append(buffer[..n]);
     }
-    if raw.len < 2 || raw[0] != 31 || raw[1] != 139 { bytes.append(raw); return bam::Status.Record; }
+    if raw.len < 2 || raw[0] != 31 || raw[1] != 139 { bytes.append(raw); return bam::Status.Ok; }
     let decoder, allocated = deflate::decompressor(); if !allocated { return bam::Status.IoError; }
     defer decoder.close(); var at: i64 = 0; var decoded: u8[>..] = [];
     while at < raw.len {
@@ -46,7 +46,7 @@ fn read_bytes(path: const u8[:], bytes: u8[>..]&, limit: i64) -> bam::Status {
             size = min(limit - bytes.len, size * 2);
         }
     }
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 fn parse(index: Index&, bytes: const u8[:]) -> bam::Status {
@@ -75,10 +75,11 @@ fn parse(index: Index&, bytes: const u8[:]) -> bam::Status {
         if entry.tid != tid { tid = entry.tid; end = 0; }
         end = max(end, entry.end); entry.max_end = end;
     }
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 // Replace an index; errors clear the previous entries. Empty indexes are valid.
+// Returns Ok on success.
 //
 // ```goose
 // let index = cram_index::Index { .. };
@@ -87,8 +88,8 @@ fn parse(index: Index&, bytes: const u8[:]) -> bam::Status {
 fn open(index: Index&, path: const u8[:]) -> bam::Status {
     index.entries.clear(); var bytes: u8[>..] = [];
     index.status = if index.max_bytes < 0 { bam::Status.Invalid } else { read_bytes(path, bytes, index.max_bytes) };
-    if index.status == bam::Status.Record { index.status = parse(index, bytes); }
-    if index.status != bam::Status.Record { index.entries.clear(); }
+    if index.status == bam::Status.Ok { index.status = parse(index, bytes); }
+    if index.status != bam::Status.Ok { index.entries.clear(); }
     index.status
 }
 
@@ -110,6 +111,7 @@ root struct Cursor {
 // Select candidate slices for [begin,end). Nested spans are retained, duplicate
 // slice addresses removed, and selected slices sorted in file order. The caller
 // must use the index for this CRAM; skipped slices are not validated.
+// Returns Ok on success, even with no slices; read delivers records or End.
 //
 // ```goose
 // let cursor = cram_index::Cursor { .. }; let index = cram_index::Index { .. };
@@ -122,7 +124,7 @@ fn fetch(cursor: Cursor&, index: const Index&, reader: cram::Reader&, tid: i32, 
     cursor.tid = tid; cursor.begin = begin; cursor.end = end;
     cursor.status = bam::Status.Closed;
     if reader.input.input.fd < 0 { return cursor.status; }
-    cursor.status = index.status; if cursor.status != bam::Status.Record { return cursor.status; }
+    cursor.status = index.status; if cursor.status != bam::Status.Ok { return cursor.status; }
     if tid < 0 || tid >= reader.references.len || begin < 0 || end < begin || end > reader.references[tid as i64].length {
         cursor.status = bam::Status.Invalid; return cursor.status;
     }
@@ -150,6 +152,8 @@ fn fetch(cursor: Cursor&, index: const Index&, reader: cram::Reader&, tid: i32, 
 // Decode only the selected slices, retaining the reader's reusable container
 // and codec storage. A fetch after EOF/error may seek backward or cross contigs.
 // Reference-provider semantics are the same as cram::read.
+// Returns Record for a validated overlapping alignment, End when exhausted,
+// or a failure.
 //
 // ```goose
 // let cursor = cram_index::Cursor { .. }; let reader = cram::Reader { .. };
@@ -157,13 +161,14 @@ fn fetch(cursor: Cursor&, index: const Index&, reader: cram::Reader&, tid: i32, 
 // assert(cursor.read(reader, source) == bam::Status.Closed);
 // ```
 fn read<R>(cursor: Cursor&, reader: cram::Reader&, source: R&) -> bam::Status {
-    if cursor.status != bam::Status.Record { return cursor.status; }
+    if cursor.status == bam::Status.Record { cursor.status = bam::Status.Ok; }
+    if cursor.status != bam::Status.Ok { return cursor.status; }
     reader.bytes.clear();
     while cursor.at < cursor.slices.len {
         if !cursor.active {
             let entry = cursor.slices[cursor.at];
             cursor.status = reader.seek_slice(entry.container, entry.slice, entry.size, source);
-            if cursor.status != bam::Status.Record { return cursor.status; }
+            if cursor.status != bam::Status.Ok { return cursor.status; }
             cursor.active = true;
         }
         if reader.next_record >= reader.slice_records.len { cursor.at += 1; cursor.active = false; continue; }

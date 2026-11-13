@@ -107,11 +107,18 @@ def suite(command, directory):
         output = directory / ("api." + kind)
         assert invoke("to-" + kind, empty, output) == ["S\tEnd"]
         assert normalized(output) == []
-        assert invoke("writer-api-" + kind, small, output) == ["S\tEnd"]
+        empty_read = invoke(kind, output, empty_ref)
+        assert empty_read[-1] == "S\tEnd" and not any(r.startswith("R\t") for r in empty_read)
+        assert invoke("writer-api-" + kind, small, output) == ["S\tOk"]
         result = normalized(output)
         assert result[0] == "owned\t0\tchrA\t4\t0\t3M\t*\t0\t0\tACN\t(7I\tZZ:Z:value"
         assert result[1:] == normalized(small)
         assert normalized(Path(str(output) + ".reopened")) == result[:1]
+        # Reopened output contains exactly one alignment: the probe checks
+        # Ok after open, Record on that read, then End and repeated End.
+        single_read = invoke(kind, Path(str(output) + ".reopened"), empty_ref)
+        assert single_read[-1] == "S\tEnd"
+        assert [r.split("\t")[1] for r in single_read if r.startswith("R\t")] == ["owned"]
         assert invoke("to-" + kind, small, directory / "nonexistent-dir/out") == ["S\tIoError"]
         if Path("/dev/full").exists(): assert invoke("to-" + kind, small, "/dev/full") == ["S\tIoError"]
 

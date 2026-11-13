@@ -44,7 +44,8 @@ fn close(reader: Reader&) {
 }
 
 // Open and read leading header lines, preserving the first alignment for
-// read(). Empty/header-only files open successfully. Errors close the input.
+// read(). Returns Ok on success, including empty/header-only files.
+// Errors close the input; call read() before borrowing an alignment.
 //
 // ```goose
 // let path = "tests/data/doc.sam";
@@ -52,14 +53,14 @@ fn close(reader: Reader&) {
 // defer delete_file(path);
 // let reader = sam::Reader { .. };
 // defer reader.close();
-// assert(reader.open(path) == bam::Status.Record);
+// assert(reader.open(path) == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
 // assert(record.name() == "r" && record.fields.pos == 5);
 // assert(record.base(2) == 'G' && record.quality(2) == 40);
-// assert(reader.open(path) == bam::Status.Record);
+// assert(reader.open(path) == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 6, 8) == bam::Status.Record);
+// assert(store.load(reader, 0, 6, 8) == bam::Status.Ok);
 // var columns = 0;
 // store.columns() { pos, entries => assert(entries.len == 1); columns += 1; };
 // assert(columns == 2);
@@ -68,7 +69,7 @@ fn open(reader: Reader&, path: const u8[:]) -> bam::Status {
     reader.close(); reader.header.clear(); reader.names.clear(); reader.references.clear();
     reader.line_number = 0; reader.last_tid = -1;
     reader.status = bam::from_bgzf(reader.stream.open(path));
-    if reader.status != bam::Status.Record { return reader.status; }
+    if reader.status != bam::Status.Ok { return reader.status; }
     var magic: u8[2] = [0; 2];
     let count = io::read(reader.stream.input, magic);
     if count < 0 || bgzf::seek_raw(reader.stream.input.fd, 0) != 0 {
@@ -79,17 +80,17 @@ fn open(reader: Reader&, path: const u8[:]) -> bam::Status {
     while true {
         let status = reader.next_line();
         if status == bam::Status.End { break; }
-        if status != bam::Status.Record { reader.status = status; break; }
+        if status != bam::Status.Ok { reader.status = status; break; }
         let line = reader.buffer[reader.line_start..reader.line_end];
         if line.len == 0 || line[0] != '@' { reader.pending = true; break; }
         if line.len + 1 > reader.max_header_bytes - reader.header.len {
             reader.status = bam::Status.TooLarge; break;
         }
         reader.status = parse_header_line(line, reader.references, reader.names, reader.max_references);
-        if reader.status != bam::Status.Record { break; }
+        if reader.status != bam::Status.Ok { break; }
         reader.header.append(line); reader.header.push('\n');
     }
-    if reader.status != bam::Status.Record { reader.stream.close(); }
+    if reader.status != bam::Status.Ok { reader.stream.close(); }
     reader.status
 }
 
@@ -115,7 +116,7 @@ fn next_line(reader: Reader&) -> bam::Status {
             reader.start = reader.line_end + 1;
             if reader.line_end > reader.line_start && reader.buffer[reader.line_end - 1] == '\r' { reader.line_end -= 1; }
             reader.line_number += 1;
-            return if reader.line_end - reader.line_start <= reader.max_line_bytes { bam::Status.Record } else { bam::Status.TooLarge };
+            return if reader.line_end - reader.line_start <= reader.max_line_bytes { bam::Status.Ok } else { bam::Status.TooLarge };
         }
         let remaining = reader.end - reader.start;
         // A CR at the limit may be followed by LF in the next BGZF block.
@@ -128,12 +129,12 @@ fn next_line(reader: Reader&) -> bam::Status {
         reader.start = 0; reader.end = remaining; scan = remaining;
         if reader.end == reader.buffer.len { reader.buffer.resize(min(reader.buffer.len * 2, reader.max_line_bytes + 2), 0); }
         let count = reader.input(reader.buffer[remaining..]);
-        if count < 0 { return if reader.status == bam::Status.Record { bam::Status.IoError } else { reader.status }; }
+        if count < 0 { return if reader.status == bam::Status.Ok { bam::Status.IoError } else { reader.status }; }
         if count == 0 {
             reader.line_start = 0; reader.line_end = remaining; reader.start = remaining;
             if remaining == 0 { return bam::Status.End; }
             if reader.buffer[remaining - 1] == '\r' { reader.line_end -= 1; }
-            reader.line_number += 1; return bam::Status.Record;
+            reader.line_number += 1; return bam::Status.Ok;
         }
         reader.end += count;
     }
@@ -141,7 +142,7 @@ fn next_line(reader: Reader&) -> bam::Status {
 
 fn parse_header_line(line: const u8[:], refs: bam::Reference[>..]&, names: u8[>..]&, max_refs: i64) -> bam::Status {
     if bstr::find_byte(line, 0) >= 0 || !bstr::is_utf8(line) { return bam::Status.Invalid; }
-    if line.len < 3 || line[..3] != "@SQ" { return bam::Status.Record; }
+    if line.len < 3 || line[..3] != "@SQ" { return bam::Status.Ok; }
     var name = line[..0];
     var length: i64 = -1;
     var at: i64 = 4;
@@ -157,7 +158,7 @@ fn parse_header_line(line: const u8[:], refs: bam::Reference[>..]&, names: u8[>.
     if refs.len >= max_refs { return bam::Status.TooLarge; }
     refs.push(bam::Reference { name: names.len, name_len: name.len, length: length });
     names.append(name); names.push(0);
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 fn find_reference(refs: const bam::Reference[:], names: const u8[:], name: const u8[:]) -> i32 {
@@ -176,19 +177,22 @@ fn reference_id(reader: const Reader&, name: const u8[:]) -> i32 { find_referenc
 // Decode the next line into reused BAM storage. Record views expire on the
 // next read/open/close. Unlike Seqair's recoverable malformed-line error, all
 // errors remain sticky here, matching bam::Reader's contract.
+// Returns Record for a validated alignment, End when exhausted, or a failure.
 //
 // ```goose
 // let reader = sam::Reader { .. };
 // assert(reader.read() == bam::Status.Closed);
 // ```
 fn read(reader: Reader&) -> bam::Status {
-    if reader.status != bam::Status.Record { return reader.status; }
+    if reader.status == bam::Status.Record { reader.status = bam::Status.Ok; }
+    if reader.status != bam::Status.Ok { return reader.status; }
     reader.bytes.clear();
-    let status = if reader.pending { bam::Status.Record } else { reader.next_line() };
+    let status = if reader.pending { bam::Status.Ok } else { reader.next_line() };
     reader.pending = false;
-    if status != bam::Status.Record { reader.status = status; return status; }
+    if status != bam::Status.Ok { reader.status = status; return status; }
     reader.status = reader.encode(reader.buffer[reader.line_start..reader.line_end]);
-    if reader.status != bam::Status.Record { reader.bytes.clear(); }
+    if reader.status != bam::Status.Ok { reader.bytes.clear(); }
+    else { reader.status = bam::Status.Record; }
     reader.status
 }
 
@@ -308,11 +312,11 @@ fn encode(reader: Reader&, line: const u8[:]) -> bam::Status {
         mate_tid: mate_tid, mate_pos: mate_pos - 1, template_len: tlen as i32,
         cigar: reader.cigar, sequence: seq, qualities: reader.qualities, aux: reader.aux };
     let status = bam_encode::encode_body(a, reader.bytes, reader.references.len, reader.max_record_bytes, bam_encode::SequenceEncoding.Sam);
-    if status != bam::Status.Record { return status; }
+    if status != bam::Status.Ok { return status; }
     let f, ok = bam::decode(reader.bytes, reader.references.len);
     if !ok { return bam::Status.Invalid; }
     reader.fields = f;
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 fn parse_float(text: const u8[:]) -> f64, bool {

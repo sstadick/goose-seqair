@@ -43,9 +43,9 @@ struct Filter {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // assert(store.records[0].pos == 5 && store.records[0].seq_len == 13);
 // ```
 struct SlimRecord {
@@ -97,9 +97,9 @@ struct SlimRecord {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // assert(store.records.len == 1);
 // reader.close(); // Stored records own their bytes, independently of Reader.
 // let record = store.record(0);
@@ -129,9 +129,9 @@ root struct Store {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(record.fields.seq_len == record.bases.len);
 // ```
@@ -152,9 +152,9 @@ struct Record {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(record.base(1) == 'C');
 // ```
@@ -175,9 +175,9 @@ fn record(store: const Store&, index: i64) -> Record {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(record.name() == "match");
 // ```
@@ -188,9 +188,9 @@ fn name(record: const Record&) -> const u8[:] { record.name_bytes }
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(record.cigar(0) == 13 << 4);
 // ```
@@ -202,9 +202,9 @@ fn cigar(record: const Record&, index: i64) -> u32 { record.cigar_words[index] }
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(record.base(1) == 'C');
 // ```
@@ -215,9 +215,9 @@ fn base(record: const Record&, index: i64) -> u8 { "=ACMGRSVTWYHKDBN"[record.bas
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(record.quality(1) == 20);
 // ```
@@ -229,9 +229,9 @@ fn quality(record: const Record&, index: i64) -> u8 { record.quality_bytes[index
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // let record = store.record(0);
 // assert(record.aux() == "NMi\x03\x00\x00\x00RGZgroup\x00");
 // ```
@@ -270,9 +270,9 @@ struct MateLinkStats { pairs: i64 = 0, ambiguous_qnames: i64 = 0 }
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // assert(store.link_mates().pairs == 0 && store.records[0].mate_index == -1);
 // ```
 fn link_mates(store: Store&) -> MateLinkStats {
@@ -317,7 +317,7 @@ fn link_mates(store: Store&) -> MateLinkStats {
 // tid is the reference's index in the BAM header; coordinates are zero-based,
 // with end excluded. Requires coordinate-sorted input and a freshly opened
 // reader for each independent query.
-// Returns Record on success, including an empty region. Error clears the store.
+// Returns Ok on success, including an empty region. Error clears the store.
 // This is not an indexed query: it reads preceding records and consumes the
 // first mapped record beyond the region. Reopen before a different query.
 // Unsorted detects decreasing mapped coordinates only in the scanned prefix;
@@ -328,9 +328,9 @@ fn link_mates(store: Store&) -> MateLinkStats {
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, reader.reference_id("chrA"), 5, 7) == bam::Status.Record);
+// assert(store.load(reader, reader.reference_id("chrA"), 5, 7) == bam::Status.Ok);
 // assert(store.records.len == 1);
 // assert(store.load(reader, 0, 9, 8) == bam::Status.Invalid);
 // assert(store.records.len == 0 && store.bases.len == 0);
@@ -345,9 +345,9 @@ fn load<R>(store: Store&, reader: R&, tid: i32, begin: i64, end: i64,
        end > reader.references[tid as i64].length {
         return bam::Status.Invalid;
     }
-    if begin == end { return bam::Status.Record; }
+    if begin == end { return bam::Status.Ok; }
     let status = scan_stream(store, reader, filter);
-    if status != bam::Status.Record {
+    if status != bam::Status.Ok {
         store.clear();
     } else if store.auto_link_mates {
         store.link_mates();
@@ -367,22 +367,23 @@ fn load<R>(store: Store&, reader: R&, tid: i32, begin: i64, end: i64,
 // Invalidates the reader's record view; call read before borrowing it again.
 // Failures clear the store. Sorting is checked only in visited chunks; indexes
 // cannot prove that the BAM is sorted, complete, or unchanged since indexing.
+// Returns Ok on success, including empty regions or no overlapping records.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let index = bam_index::Index { .. };
-// assert(index.open("tests/data/example.bam.bai") == bam::Status.Record);
+// assert(index.open("tests/data/example.bam.bai") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load_indexed(reader, index, 0, 95, 100) == bam::Status.Record);
-// assert(store.load_indexed(reader, index, 0, 5, 7) == bam::Status.Record);
+// assert(store.load_indexed(reader, index, 0, 95, 100) == bam::Status.Ok);
+// assert(store.load_indexed(reader, index, 0, 5, 7) == bam::Status.Ok);
 // {
 //     let record = store.record(0);
 //     assert(store.records.len == 1 && record.name() == "match");
 // }
 // assert(store.load_indexed(reader, index, 0, 0, 30,
-//     pileup::Filter { retain_zero_span: true, .. }) == bam::Status.Record);
+//     pileup::Filter { retain_zero_span: true, .. }) == bam::Status.Ok);
 // var empty = 0;
 // for record in store.records { if record.reference_len == 0 { empty += 1; } }
 // assert(empty == 3); // Empty CIGAR, insertion-only, soft-clip-only.
@@ -395,13 +396,13 @@ fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Ind
     store.clear();
     store.tid = tid; store.begin = begin; store.end = end;
     if reader.stream.input.fd < 0 { return bam::Status.Closed; }
-    if index.status != bam::Status.Record { return index.status; }
+    if index.status != bam::Status.Ok { return index.status; }
     if index.references.len != reader.references.len || tid < 0 || tid >= reader.references.len ||
        begin < 0 || end < begin || end > reader.references[tid as i64].length { return bam::Status.Invalid; }
     var chunks: bam_index::Chunk[>..] = [];
     var status = index.query(tid, begin, end, chunks);
-    if status == bam::Status.Record && chunks.len > 0 { status = scan(store, reader, filter, chunks); }
-    if status != bam::Status.Record {
+    if status == bam::Status.Ok && chunks.len > 0 { status = scan(store, reader, filter, chunks); }
+    if status != bam::Status.Ok {
         store.clear();
     } else if store.auto_link_mates {
         store.link_mates();
@@ -413,15 +414,15 @@ fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Ind
 // a zero-based position and entries borrowed for that call; store.record()
 // accesses contributing reads. Uses load_indexed's filters, mate linking and
 // storage options. A failed load clears the store and invokes no callbacks.
-// Returns Record on success, including empty regions. Do not reload or mutate
+// Returns Ok on success, including empty regions. Do not reload or mutate
 // the store inside the callback. Repeated queries reuse its storage.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// reader.open("tests/data/example.bam").check(bam::Status.Ok);
 // let index = bam_index::Index { .. };
-// index.open_for("tests/data/example.bam").check(bam::Status.Record);
+// index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 // let store = pileup::Store { .. };
 // var count = 0;
 // let status = store.pileup(reader, index, 0 as i32, 5, 7) { pos, entries =>
@@ -430,31 +431,32 @@ fn load_indexed(store: Store&, reader: bam::Reader&, index: const bam_index::Ind
 //     assert(record.name() == "match");
 //     count += 1;
 // };
-// status.check(bam::Status.Record);
+// status.check(bam::Status.Ok);
 // assert(count == 2);
 // ```
 fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
         index: const bam_index::Index&, tid: i32, begin: i64, end: i64,
         filter: Filter = Filter { .. }) -> bam::Status {
     let status = store.load_indexed(reader, index, tid, begin, end, filter);
-    if status == bam::Status.Record { store.columns(F); }
+    if status == bam::Status.Ok { store.columns(F); }
     status
 }
 
 // Indexed pileup by reference name. An unknown name returns Invalid and clears
 // the store without invoking the callback; otherwise identical to the tid form.
+// Returns Ok on success, including empty regions.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// reader.open("tests/data/example.bam").check(bam::Status.Ok);
 // let index = bam_index::Index { .. };
-// index.open_for("tests/data/example.bam").check(bam::Status.Record);
+// index.open_for("tests/data/example.bam").check(bam::Status.Ok);
 // let store = pileup::Store { .. };
 // let status = store.pileup(reader, index, "chrA", 5, 7) { pos, entries =>
 //     assert(entries.len == 1);
 // };
-// status.check(bam::Status.Record);
+// status.check(bam::Status.Ok);
 // ```
 fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
         index: const bam_index::Index&, name: const u8[:], begin: i64, end: i64,
@@ -465,35 +467,37 @@ fn pileup<F: fn(i64, const Entry[:])>(store: Store&, reader: bam::Reader&,
 // Sequential pileup without an index. Uses load's sorted-input contract and
 // scans forward from the current position; reopen before an independent query.
 // Like the indexed form, callbacks run only after a successful complete load.
+// Returns Ok on success, including empty regions.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// reader.open("tests/data/example.bam").check(bam::Status.Ok);
 // let store = pileup::Store { .. };
 // let status = store.pileup(reader, 0 as i32, 5, 7) { pos, entries =>
 //     assert(entries.len == 1);
 // };
-// status.check(bam::Status.Record);
+// status.check(bam::Status.Ok);
 // ```
 fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
         tid: i32, begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status {
     let status = store.load(reader, tid, begin, end, filter);
-    if status == bam::Status.Record { store.columns(F); }
+    if status == bam::Status.Ok { store.columns(F); }
     status
 }
 
 // Sequential pileup by reference name, with the same behavior as the tid form.
+// Returns Ok on success, including empty regions; unknown names return Invalid.
 //
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// reader.open("tests/data/example.bam").check(bam::Status.Record);
+// reader.open("tests/data/example.bam").check(bam::Status.Ok);
 // let store = pileup::Store { .. };
 // let status = store.pileup(reader, "chrA", 5, 7) { pos, entries =>
 //     assert(entries.len == 1);
 // };
-// status.check(bam::Status.Record);
+// status.check(bam::Status.Ok);
 // ```
 fn pileup<R, F: fn(i64, const Entry[:])>(store: Store&, reader: R&,
         name: const u8[:], begin: i64, end: i64, filter: Filter = Filter { .. }) -> bam::Status {
@@ -505,18 +509,18 @@ fn scan_stream<R>(store: Store&, reader: R&, filter: Filter) -> bam::Status {
     var last_pos: i64 = -1;
     loop {
         let status = reader.read();
-        if status == bam::Status.End { return bam::Status.Record; }
+        if status == bam::Status.End { return bam::Status.Ok; }
         if status != bam::Status.Record { return status; }
         let record = reader.record();
         let f = record.fields;
         if f.flags & 4 != 0 || f.tid < 0 || f.pos < 0 { continue; }
         if f.tid < last_tid || (f.tid == last_tid && f.pos < last_pos) { return bam::Status.Unsorted; }
         last_tid = f.tid; last_pos = f.pos;
-        if f.tid > store.tid || (f.tid == store.tid && f.pos >= store.end) { return bam::Status.Record; }
+        if f.tid > store.tid || (f.tid == store.tid && f.pos >= store.end) { return bam::Status.Ok; }
         if f.tid != store.tid || f.end <= store.begin || f.flags & filter.exclude_flags != 0 ||
            f.mapq < filter.min_mapq || (f.reference_len == 0 && !filter.retain_zero_span) { continue; }
         let kept = retain(store, record);
-        if kept != bam::Status.Record { return kept; }
+        if kept != bam::Status.Ok { return kept; }
     }
 }
 
@@ -527,22 +531,22 @@ fn scan(store: Store&, reader: bam::Reader&, filter: Filter,
     var chunk:    i64 = 0;
     if chunks.len > 0 {
         let status = reader.seek(chunks[0].begin);
-        if status != bam::Status.Record { return if status == bam::Status.End { bam::Status.Truncated } else { status }; }
+        if status != bam::Status.Ok { return if status == bam::Status.End { bam::Status.Truncated } else { status }; }
     }
     while true {
         if chunks.len > 0 {
             while reader.tell() >= chunks[chunk].end {
                 chunk += 1;
-                if chunk == chunks.len { return bam::Status.Record; }
+                if chunk == chunks.len { return bam::Status.Ok; }
                 if reader.tell() < chunks[chunk].begin {
                     let status = reader.seek(chunks[chunk].begin);
-                    if status != bam::Status.Record { return if status == bam::Status.End { bam::Status.Truncated } else { status }; }
+                    if status != bam::Status.Ok { return if status == bam::Status.End { bam::Status.Truncated } else { status }; }
                 }
             }
         }
         let status = if chunks.len > 0 { reader.read_payload() } else { reader.read() };
-        if status == bam::Status.End { return if chunks.len > 0 { bam::Status.Truncated } else { bam::Status.Record }; }
-        if status != bam::Status.Record { return status; }
+        if status == bam::Status.End { return if chunks.len > 0 { bam::Status.Truncated } else { bam::Status.Ok }; }
+        if status != (if chunks.len > 0 { bam::Status.Ok } else { bam::Status.Record }) { return status; }
         if chunks.len > 0 {
             let raw = reader.record();
             let tid = bam::signed32(raw.bytes, 0);
@@ -568,9 +572,9 @@ fn scan(store: Store&, reader: bam::Reader&, filter: Filter,
         if f.tid != store.tid || f.end <= store.begin || f.flags & filter.exclude_flags != 0 ||
            f.mapq < filter.min_mapq || (f.reference_len == 0 && !filter.retain_zero_span) { continue; }
         let kept = retain(store, record);
-        if kept != bam::Status.Record { return kept; }
+        if kept != bam::Status.Ok { return kept; }
     }
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 fn retain(store: Store&, record: const bam::Record&) -> bam::Status {
@@ -602,7 +606,7 @@ fn retain(store: Store&, record: const bam::Record&) -> bam::Status {
     store.bases.resize(store.bases.len + f.seq_len, 0);
     unpack_bases(record.bytes[f.seq..f.qual], store.bases[(item.seq as i64)..]);
     store.records.push(item);
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 extern fn unpack_bases_raw(sequence: const u8[:], bases: u8[:]) = "goose_seqair_unpack_bases";
@@ -628,9 +632,9 @@ enum Op { Base, Deletion, RefSkip }
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 6) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 6) == bam::Status.Ok);
 // store.columns() { pos, entries =>
 //     assert(pos == 5 && entries.len == 1);
 //     let e = entries[0];
@@ -712,9 +716,9 @@ fn contribution(cigars: const u32[:], bases: const u8[:], qualities: const u8[:]
 // ```goose
 // let reader = bam::Reader { .. };
 // defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let store = pileup::Store { .. };
-// assert(store.load(reader, 0, 5, 7) == bam::Status.Record);
+// assert(store.load(reader, 0, 5, 7) == bam::Status.Ok);
 // var count = 0;
 // store.columns() { pos, entries =>
 //     assert(pos == 5 + count && entries.len == 1);

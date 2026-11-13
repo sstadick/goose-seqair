@@ -18,7 +18,7 @@ extern fn sequence_text(input: const u8[:], output: u8[:]) = "goose_seqair_seque
 //
 // ```goose
 // let writer = sam_writer::Writer { .. };
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.close() == bam::Status.Ok);
 // ```
 root struct Writer {
     output: io::BufferedWriter = io::BufferedWriter { file: io::FileHandle { fd: -1 }, used: 0, buffer: [] },
@@ -33,15 +33,15 @@ root struct Writer {
 //
 // ```goose
 // let writer = sam_writer::Writer { .. };
-// assert(writer.close() == bam::Status.Record);
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.close() == bam::Status.Ok);
+// assert(writer.close() == bam::Status.Ok);
 // ```
 fn close(writer: Writer&) -> bam::Status {
     var result = writer.status;
-    if result != bam::Status.Record { writer.output.used = 0; }
-    if !io::close(writer.output) && result == bam::Status.Record { result = bam::Status.IoError; }
+    if result != bam::Status.Ok { writer.output.used = 0; }
+    if !io::close(writer.output) && result == bam::Status.Ok { result = bam::Status.IoError; }
     writer.status = bam::Status.Closed;
-    if result == bam::Status.Closed { bam::Status.Record } else { result }
+    if result == bam::Status.Closed { bam::Status.Ok } else { result }
 }
 
 // Seqair header formatting: stop at NUL, add a missing newline, synthesize SQ
@@ -70,7 +70,7 @@ fn header_text(header: const u8[:], refs: const bam::Reference[:], names: const 
         for r in refs { format(out, "@SQ\tSN:", names[r.name..r.name + r.name_len], "\tLN:", r.length, "\n"); }
     }
     if out.len > 16777216 { return bam::Status.TooLarge; }
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 // Create/truncate plain SAM and write its header eagerly. Target IDs in records
@@ -79,24 +79,24 @@ fn header_text(header: const u8[:], refs: const bam::Reference[:], names: const 
 //
 // ```goose
 // let reader = bam::Reader { .. }; defer reader.close();
-// assert(reader.open("tests/data/example.bam") == bam::Status.Record);
+// assert(reader.open("tests/data/example.bam") == bam::Status.Ok);
 // let writer = sam_writer::Writer { .. }; defer writer.close();
 // let path = "tests/data/writer.sam"; defer delete_file(path);
-// assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Record);
+// assert(writer.open(path, reader.header, reader.references, reader.names) == bam::Status.Ok);
 // assert(reader.read() == bam::Status.Record);
 // let record = reader.record();
-// assert(writer.write(record) == bam::Status.Record);
-// assert(writer.close() == bam::Status.Record);
+// assert(writer.write(record) == bam::Status.Ok);
+// assert(writer.close() == bam::Status.Ok);
 // let input = sam::Reader { .. }; defer input.close();
-// assert(input.open(path) == bam::Status.Record && input.read() == bam::Status.Record);
+// assert(input.open(path) == bam::Status.Ok && input.read() == bam::Status.Record);
 // let decoded = input.record();
 // assert(decoded.name() == "match");
 // ```
 fn open(writer: Writer&, path: const u8[:], header: const u8[:], refs: const bam::Reference[:], names: const u8[:]) -> bam::Status {
-    let previous = writer.close(); if previous != bam::Status.Record { return previous; }
+    let previous = writer.close(); if previous != bam::Status.Ok { return previous; }
     if writer.max_record_bytes < 32 || writer.max_line_bytes < 1 { writer.status = bam::Status.Invalid; return writer.status; }
     writer.status = header_text(header, refs, names, writer.line);
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.references.clear(); writer.references.append(refs);
     writer.names.clear(); writer.names.append(names);
     let file, ok = io::open_write(path);
@@ -158,7 +158,7 @@ fn format_aux(aux: const u8[:], skip_cg: bool, out: u8[>..]&, limit: i64) -> bam
         if out.len > limit { return bam::Status.TooLarge; }
         at = end;
     }
-    bam::Status.Record
+    bam::Status.Ok
 }
 
 fn sequence(record: const bam::Record&, out: u8[>..]&) {
@@ -189,7 +189,7 @@ fn qualities(record: const pileup::Record&) -> const u8[:] { record.quality_byte
 // assert(writer.write(alignment) == bam::Status.Closed);
 // ```
 fn write<T>(writer: Writer&, record: const T&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     let f = record.fields;
     if f.tid < -1 || f.tid >= writer.references.len || f.mate_tid < -1 || f.mate_tid >= writer.references.len {
         writer.status = bam::Status.Invalid; return writer.status;
@@ -217,7 +217,7 @@ fn write<T>(writer: Writer&, record: const T&) -> bam::Status {
         }
     }
     writer.status = format_aux(record.aux(), f.cigar_len > 65535, writer.line, writer.max_line_bytes);
-    if writer.status != bam::Status.Record { writer.line.clear(); return writer.status; }
+    if writer.status != bam::Status.Ok { writer.line.clear(); return writer.status; }
     writer.line.push('\n');
     if writer.line.len > writer.max_line_bytes { writer.status = bam::Status.TooLarge; return writer.status; }
     if io::write(writer.output, writer.line) != writer.line.len { writer.status = bam::Status.IoError; }
@@ -233,9 +233,9 @@ fn write<T>(writer: Writer&, record: const T&) -> bam::Status {
 // assert(writer.write(alignment) == bam::Status.Closed);
 // ```
 fn write(writer: Writer&, alignment: const bam_encode::Alignment&) -> bam::Status {
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     writer.status = bam_encode::encode(alignment, writer.payload, writer.references.len, writer.max_record_bytes);
-    if writer.status != bam::Status.Record { return writer.status; }
+    if writer.status != bam::Status.Ok { return writer.status; }
     let fields, ok = bam::decode(writer.payload, writer.references.len);
     if !ok { writer.status = bam::Status.Invalid; return writer.status; }
     let record = bam::Record { fields: fields, bytes: writer.payload };
