@@ -101,7 +101,7 @@ The status-returning APIs remain available without `check`.
 
 Requires Goose, CMake 3.20+, and a native C compiler, including for `goose run`
 (libdeflate is compiled natively). Tested with Goose
-[`855f1037`](https://github.com/aardappel/goose/commit/855f1037a5ceee837ef270382ac8d26df47a7139).
+[`4602c986`](https://github.com/aardappel/goose/commit/4602c98660676b2cb94bc9b06fec8c65b37fce92).
 Runtime dependencies are pinned in the source and example imports.
 Root programs must also declare `import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";`
 and select goose-io v0.3.0 for descriptor-owned seeking.
@@ -386,7 +386,8 @@ The [writer benchmarks](bench/README.md) report measured speed and output size.
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r tests/requirements.txt
-.venv/bin/python tests/run.py
+.venv/bin/python tests/run.py --native-only --cc clang
+python3 tests/checkfree.py
 python3 tests/native_simd.py --sanitize
 # On the corresponding hardware; these fail on an unsupported host:
 python3 tests/native_simd.py --require-isa neon
@@ -401,6 +402,14 @@ scripts/doctest.sh
 [`bb399143`](https://github.com/sstadick/goose-doc/commit/bb399143866c0c42268f23c8dfda7a447173f93d).
 Source comments generate `API.md`; `api.txt` selects documented public names,
 not language-enforced visibility. Doctests generate their own small BAM fixture.
+
+The pinned compiler checks code executed by `checkfree` callers, including
+unannotated callees. `tests/checkfree.py` tests stored-record name/auxiliary
+access and status callbacks from such callers, rejects an unproved quality
+index with a callee diagnostic, and verifies ordinary debug bounds checks at
+both inlining levels. It also checks the `--no-bce` warning: that flag disables
+verification rather than proving a guarantee. Indexed accessors and whole
+readers/pileups are not generally promised to be `checkfree`.
 
 Tests independently encode BAM/BGZF with Python `struct`/`zlib`, then compare
 per-read pileups against htslib through pinned pysam. They exercise cross-block
