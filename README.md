@@ -101,7 +101,7 @@ The status-returning APIs remain available without `check`.
 
 Requires Goose, CMake 3.20+, and a native C compiler, including for `goose run`
 (libdeflate is compiled natively). Tested with Goose
-[`4602c986`](https://github.com/aardappel/goose/commit/4602c98660676b2cb94bc9b06fec8c65b37fce92).
+[`1838de45`](https://github.com/aardappel/goose/commit/1838de45b8823cac6c3e02a431f0134012212d39).
 Runtime dependencies are pinned in the source and example imports.
 Root programs must also declare `import bgzf from "github.com/sstadick/goose-bgzf@v0.1.2";`
 and select goose-io v0.3.0 for descriptor-owned seeking.
